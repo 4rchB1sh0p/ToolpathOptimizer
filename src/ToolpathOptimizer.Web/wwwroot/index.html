@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Toolpath Optimizer — advisory drilling sequence</title>
+  <link rel="stylesheet" href="app.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <header>
+    <h1>Toolpath Optimizer</h1>
+    <p class="notice" role="note">Advisory analysis only — not machine-ready NC code. Models non-cutting travel distance only; makes no collision-safety or cycle-time claim. Review before re-entering any sequence in CAM.</p>
+  </header>
+
+  <main>
+    <section aria-labelledby="identity-heading">
+      <h2 id="identity-heading">1. Development identity</h2>
+      <p class="hint">Development only: these values are sent as <code>X-Dev-*</code> headers until a verified identity provider is integrated.</p>
+      <div class="row">
+        <label>Tenant <input id="tenant" value="demo-tenant" autocomplete="off"></label>
+        <label>User <input id="user" value="engineer-1" autocomplete="off"></label>
+        <label>Role
+          <select id="role">
+            <option>Owner</option>
+            <option selected>Engineer</option>
+            <option>Reviewer</option>
+            <option>Viewer</option>
+          </select>
+        </label>
+      </div>
+    </section>
+
+    <section aria-labelledby="project-heading">
+      <h2 id="project-heading">2. Project</h2>
+      <div class="row">
+        <label>New project name <input id="project-name" value="Plate demo" maxlength="100"></label>
+        <button id="create-project" type="button">Create project</button>
+      </div>
+      <div class="row">
+        <label>Project <select id="project"></select></label>
+        <button id="refresh-projects" type="button">Refresh</button>
+      </div>
+    </section>
+
+    <section aria-labelledby="input-heading">
+      <h2 id="input-heading">3. Inputs</h2>
+      <div class="row">
+        <label>Points CSV <input id="points-file" type="file" accept=".csv,text/csv"></label>
+        <label>Job manifest JSON <input id="manifest-file" type="file" accept=".json,application/json"></label>
+      </div>
+      <div class="row">
+        <button id="upload" type="button">Upload selected files</button>
+        <button id="upload-sample" type="button">Upload synthetic sample</button>
+      </div>
+      <p id="input-status" class="status" aria-live="polite"></p>
+    </section>
+
+    <section aria-labelledby="run-heading">
+      <h2 id="run-heading">4. Analysis</h2>
+      <button id="run" type="button" disabled>Run analysis</button>
+      <p id="run-status" class="status" aria-live="polite"></p>
+      <div id="error" class="error" role="alert" hidden></div>
+    </section>
+
+    <section id="results" aria-labelledby="results-heading" hidden>
+      <h2 id="results-heading">5. Comparison (server-computed)</h2>
+      <table id="summary"><tbody></tbody></table>
+      <figure>
+        <svg id="plot" viewBox="0 0 640 420" role="img" aria-labelledby="plot-title"><title id="plot-title">Baseline (dashed) and selected route (solid)</title></svg>
+        <figcaption>Dashed grey: baseline order. Solid blue: selected route. Square: start; diamond: end.</figcaption>
+      </figure>
+      <div class="row">
+        <button id="download-json" type="button">Download report JSON</button>
+        <button id="download-csv" type="button">Download CSV summary</button>
+      </div>
+      <h3>Selected visit order</h3>
+      <table id="order"><thead><tr><th>#</th><th>Point</th><th>X (mm)</th><th>Y (mm)</th><th>Group</th></tr></thead><tbody></tbody></table>
+    </section>
+  </main>
+</body>
+</html>

@@ -1,0 +1,9 @@
+bin/
+obj/
+*.user
+.vs/
+TestResults/
+BenchmarkDotNet.Artifacts/
+App_Data/
+*.tmp
+samples/*.report.json

@@ -1,6 +1,6 @@
 # Solution structure
 
-Status: Proposed (no code exists) | Last reviewed: 2026-11-19
+Status: Implemented (scaffold, D-019) | Last reviewed: 2026-11-19
 
 ## Purpose and scope
 - Defines future projects, folders, dependencies and namespaces.

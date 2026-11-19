@@ -1,0 +1,15 @@
+{
+  "schema_version": "1.0",
+  "job_id": "plate-demo",
+  "coordinate_system": "XY_CARTESIAN",
+  "units": "mm",
+  "start_x_mm": -20,
+  "start_y_mm": -20,
+  "end_x_mm": -20,
+  "end_y_mm": -20,
+  "constraints": {
+    "precedence": [ { "before": "P01", "after": "P20" }, { "before": "P10", "after": "P03" } ],
+    "locked_groups": [ "TAP" ]
+  },
+  "algorithm": { "name": "nearest-neighbor-2opt", "seed": 0, "max_passes": 50 }
+}

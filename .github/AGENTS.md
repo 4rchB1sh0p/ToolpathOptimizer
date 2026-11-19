@@ -20,7 +20,7 @@ Build a safe, testable, explainable toolpath analysis and constrained sequencing
 Propose a small plan; implement one vertical slice; run formatter, tests, static analysis and security checks; record decisions, limitations and outstanding risks. Prefer standard .NET hosting, DI, options validation, cancellation, TimeProvider, structured logging and immutable domain types. Keep command-line exit codes stable. Do not invent benchmark results.
 
 ## Repository scope
-Documentation-only starter. Do not generate code unless explicitly asked in a later request. Markdown is the source of truth until the scaffold exists.
+The scaffold exists (`ToolpathOptimizer.slnx`, D-019). Markdown under `docs/` remains the design source of truth; keep code and docs in sync in the same change.
 
 
 

@@ -1,0 +1,1 @@
+{"schema_version":"1.0","coordinate_system":"XY_CARTESIAN","units":"mm","start_x_mm":0,"start_y_mm":0,"constraints":{"precedence":[],"locked_groups":[]},"algorithm":{"name":"nearest-neighbor-2opt","seed":0}}

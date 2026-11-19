@@ -1,0 +1,109 @@
+{
+  "schema_version": "1.0",
+  "report_kind": "advisory_drilling_sequence",
+  "advisory_notice": "Advisory analysis only. This report is not machine-ready NC code, models non-cutting travel distance only, makes no collision-safety, machine-safety or cycle-time claim, and must be reviewed by a qualified programmer before any sequence is re-entered in CAM.",
+  "job_id": null,
+  "input_sha256": "941df18578ba55b8777435c3116927ba4733669d7ca94573e35de3680ea3b332",
+  "source_files": [
+    {
+      "role": "points",
+      "sha256": "8733b7329a3a0f8b9d4c6d25554b61af082ec08d28f84f859eef45be7be48df1",
+      "size_bytes": 100
+    },
+    {
+      "role": "manifest",
+      "sha256": "7c49edf2c6664066e70a6c17b3e4f1f48dc79d07e96116a1848f7a163bba086b",
+      "size_bytes": 208
+    }
+  ],
+  "tool_name": "toolpath-optimize",
+  "tool_version": "0.1.0+aea289f1e2e3aa947ae68f8591717ae4a2c1a7b3",
+  "algorithm_name": "nearest-neighbor-2opt",
+  "algorithm_version": "1.0.0",
+  "parameters": {
+    "seed": 0,
+    "max_passes": 100,
+    "max_move_evaluations": 200000000,
+    "min_improvement_mm": 0.001
+  },
+  "length_unit": "mm",
+  "canonical_job": {
+    "points": [
+      {
+        "point_id": "H01",
+        "x_mm": 0,
+        "y_mm": 0,
+        "operation_group": "A"
+      },
+      {
+        "point_id": "H02",
+        "x_mm": 100,
+        "y_mm": 0,
+        "operation_group": "A"
+      },
+      {
+        "point_id": "H03",
+        "x_mm": 100,
+        "y_mm": 100,
+        "operation_group": "A"
+      },
+      {
+        "point_id": "H04",
+        "x_mm": 0,
+        "y_mm": 100,
+        "operation_group": "A"
+      }
+    ],
+    "start_x_mm": 0,
+    "start_y_mm": 0,
+    "end_x_mm": null,
+    "end_y_mm": null,
+    "constraints": {
+      "precedence": [],
+      "locked_groups": []
+    }
+  },
+  "baseline_order": [
+    "H01",
+    "H02",
+    "H03",
+    "H04"
+  ],
+  "candidate_order": [
+    "H01",
+    "H02",
+    "H03",
+    "H04"
+  ],
+  "selected_route": "baseline",
+  "selection_reason": "no_improvement_baseline_retained",
+  "baseline_distance_mm": 300.00000000000006,
+  "candidate_distance_mm": 300.00000000000006,
+  "delta_distance_mm": 0,
+  "delta_percent": 0,
+  "constraint_check": {
+    "baseline": {
+      "feasible": true,
+      "violation_count": 0,
+      "violations": []
+    },
+    "candidate": {
+      "feasible": true,
+      "violation_count": 0,
+      "violations": []
+    }
+  },
+  "search": {
+    "passes": 1,
+    "move_evaluations": 6,
+    "accepted_moves": 0,
+    "termination": "converged"
+  },
+  "warnings": [
+    {
+      "code": "NO_IMPROVEMENT_BASELINE_SELECTED",
+      "message": "The candidate does not shorten travel by the minimum improvement; the baseline is retained."
+    }
+  ],
+  "generated_at_utc": "2026-11-19T15:32:02.516Z"
+}

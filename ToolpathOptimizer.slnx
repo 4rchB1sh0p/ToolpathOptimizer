@@ -1,0 +1,19 @@
+<Solution>
+  <Folder Name="/benchmarks/">
+    <Project Path="benchmarks/ToolpathOptimizer.Core.Benchmarks/ToolpathOptimizer.Core.Benchmarks.csproj" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/ToolpathOptimizer.Application/ToolpathOptimizer.Application.csproj" />
+    <Project Path="src/ToolpathOptimizer.Cli/ToolpathOptimizer.Cli.csproj" />
+    <Project Path="src/ToolpathOptimizer.Core/ToolpathOptimizer.Core.csproj" />
+    <Project Path="src/ToolpathOptimizer.Infrastructure/ToolpathOptimizer.Infrastructure.csproj" />
+    <Project Path="src/ToolpathOptimizer.Web/ToolpathOptimizer.Web.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/ToolpathOptimizer.Application.UnitTests/ToolpathOptimizer.Application.UnitTests.csproj" />
+    <Project Path="tests/ToolpathOptimizer.Cli.IntegrationTests/ToolpathOptimizer.Cli.IntegrationTests.csproj" />
+    <Project Path="tests/ToolpathOptimizer.Core.UnitTests/ToolpathOptimizer.Core.UnitTests.csproj" />
+    <Project Path="tests/ToolpathOptimizer.Infrastructure.IntegrationTests/ToolpathOptimizer.Infrastructure.IntegrationTests.csproj" />
+    <Project Path="tests/ToolpathOptimizer.Web.IntegrationTests/ToolpathOptimizer.Web.IntegrationTests.csproj" />
+  </Folder>
+</Solution>

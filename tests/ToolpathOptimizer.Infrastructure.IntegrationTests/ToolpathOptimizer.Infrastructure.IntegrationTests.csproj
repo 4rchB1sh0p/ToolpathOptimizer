@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>ToolpathOptimizer.Infrastructure.IntegrationTests</RootNamespace>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\ToolpathOptimizer.Infrastructure\ToolpathOptimizer.Infrastructure.csproj" />
+  </ItemGroup>
+</Project>

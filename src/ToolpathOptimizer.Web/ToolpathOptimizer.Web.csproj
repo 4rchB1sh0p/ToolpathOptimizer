@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <RootNamespace>ToolpathOptimizer.Web</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\ToolpathOptimizer.Application\ToolpathOptimizer.Application.csproj" />
+    <ProjectReference Include="..\ToolpathOptimizer.Infrastructure\ToolpathOptimizer.Infrastructure.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="ToolpathOptimizer.Web.IntegrationTests" />
+  </ItemGroup>
+</Project>
