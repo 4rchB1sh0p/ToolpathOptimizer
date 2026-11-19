@@ -1,0 +1,23 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "XmlUploader CLI: upload 8187-26",
+            "type": "coreclr",
+            "request": "launch",
+            "preLaunchTask": "build XmlUploader.Cli",
+            "program": "${workspaceFolder}/src/ToolpathOptimizer.XmlUploader.Cli/bin/Debug/net10.0/ToolpathOptimizer.XmlUploader.Cli.dll",
+            "args": [
+                "--file",
+                "${workspaceFolder}/src/ToolpathOptimizer.ConsoleTest/bin/Debug/net10.0/local-data/data/UploadXmlFiles/8187-26_Upload_20261117153238725.xml"
+            ],
+            "cwd": "${workspaceFolder}/src/ToolpathOptimizer.XmlUploader.Cli/bin/Debug/net10.0",
+            "env": {
+                "DOTNET_ENVIRONMENT": "Development"
+            },
+            "console": "integratedTerminal",
+            "stopAtEntry": false,
+            "justMyCode": true
+        }
+    ]
+}
