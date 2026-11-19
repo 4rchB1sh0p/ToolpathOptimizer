@@ -48,16 +48,8 @@ public sealed class CanonicalJob
 
     /// <summary>Computes the canonical input hash: SHA-256 of the compact canonical JSON.</summary>
     /// <returns>Lower-case hexadecimal hash.</returns>
-    public string ComputeSha256()
-    {
-        using var buffer = new MemoryStream();
-        using (var writer = new Utf8JsonWriter(buffer))
-        {
-            WriteTo(writer);
-        }
-
-        return Convert.ToHexStringLower(SHA256.HashData(buffer.ToArray()));
-    }
+    public string ComputeSha256() =>
+        Convert.ToHexStringLower(SHA256.HashData(ContractJson.ToUtf8Bytes(WriteTo, ContractJson.Canonical)));
 
     /// <summary>Writes the canonical job as a JSON object.</summary>
     /// <param name="writer">Target writer.</param>

@@ -4,7 +4,7 @@ Status: Proposed | Last reviewed: 2026-11-19
 
 ## Purpose and scope
 - How correctness, determinism, robustness, security and performance are proven.
-- Applies to all future projects; no tests exist yet.
+- Applies to every project; conventions for writing tests are in [clean-coding-practices.md](../../.github/clean-coding-practices.md#testing-standards).
 
 ## Projects and naming (AGENTS.md)
 | Project | Content |
@@ -29,6 +29,10 @@ File and class: `<ClassUnderTest>Tests`. One behaviour per test; no network, clo
 ## Determinism and platforms
 - CI matrix: win-x64, linux-x64, linux-arm64; golden reports must match across all.
 - Run each golden twice per job to catch hidden state.
+
+## Speed
+- Child-process suites (`ToolpathOptimizer.Cli.IntegrationTests`) are tagged `Category=Process`; run fast suites with `dotnet test --filter Category!=Process`.
+- Expensive setup (a CLI run, a web host) is shared through xUnit fixtures; golden reports still run twice per fixture to catch hidden state.
 
 ## Robustness and security
 - Negative tests per error code; fuzzing of CSV/JSON readers; limit boundary tests (n, n+1).

@@ -12,10 +12,10 @@ public sealed class ArchitectureTests
     [InlineData("ToolpathOptimizer.Web")]
     [InlineData("Microsoft.AspNetCore")]
     [InlineData("Microsoft.Extensions.Hosting")]
-    public void Application_DoesNotDependOnOuterLayers(string forbidden)
+    public void ApplicationTypes_OuterLayerNamespace_AreNotReferenced(string forbidden)
     {
         TestResult result = Types.InAssembly(typeof(OperationOutcome).Assembly).ShouldNot().HaveDependencyOn(forbidden).GetResult();
 
-        Assert.True(result.IsSuccessful, string.Join(", ", result.FailingTypeNames ?? []));
+        Assert.True(result.IsSuccessful, "Types depending on " + forbidden + ": " + string.Join(", ", result.FailingTypeNames ?? []));
     }
 }

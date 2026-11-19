@@ -1,20 +1,9 @@
 using Microsoft.Extensions.Options;
+using ToolpathOptimizer.Application.Outcomes;
 using ToolpathOptimizer.Application.Ports;
 using ToolpathOptimizer.Core.Domain;
 
 namespace ToolpathOptimizer.Infrastructure.Storage;
-
-/// <summary>
-/// Options for <see cref="LocalArtifactStore"/>.
-/// </summary>
-public sealed class ArtifactStorageOptions
-{
-    /// <summary>Configuration section name.</summary>
-    public const string SectionName = "ArtifactStorage";
-
-    /// <summary>Gets or sets the root directory (development only; object storage later).</summary>
-    public string RootPath { get; set; } = "App_Data/artifacts";
-}
 
 /// <summary>
 /// Development artifact store on the local file system. Keys are <c>{tenant}/{key}</c>; every segment must be a
@@ -43,10 +32,12 @@ public sealed class LocalArtifactStore : IArtifactStore
     }
 
     /// <inheritdoc />
-    public async Task<byte[]?> GetAsync(string tenantId, string key, CancellationToken cancellationToken)
+    public async Task<Result<byte[]>> GetAsync(string tenantId, string key, CancellationToken cancellationToken)
     {
         string path = PathFor(tenantId, key);
-        return File.Exists(path) ? await File.ReadAllBytesAsync(path, cancellationToken).ConfigureAwait(false) : null;
+        return File.Exists(path)
+            ? Result<byte[]>.Success(await File.ReadAllBytesAsync(path, cancellationToken).ConfigureAwait(false))
+            : Result<byte[]>.NotFound("Artifact");
     }
 
     /// <inheritdoc />

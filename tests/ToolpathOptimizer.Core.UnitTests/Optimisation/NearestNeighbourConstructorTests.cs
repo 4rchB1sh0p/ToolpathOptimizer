@@ -1,47 +1,49 @@
 using ToolpathOptimizer.Core.Domain;
 using ToolpathOptimizer.Core.Optimisation;
+using ToolpathOptimizer.Core.UnitTests.Support;
 using ToolpathOptimizer.Core.Validation;
-using static ToolpathOptimizer.Core.UnitTests.TestJobs;
+using static ToolpathOptimizer.Core.UnitTests.Support.TestData;
 
 namespace ToolpathOptimizer.Core.UnitTests.Optimisation;
 
+/// <summary>Tests for <see cref="NearestNeighbourConstructor"/>.</summary>
 public sealed class NearestNeighbourConstructorTests
 {
-    private static string[] Construct(DrillJob job)
+    private static string[] ConstructOrder(DrillJob job)
     {
         ConstraintModel model = JobValidator.Validate(job).Model;
-        return NearestNeighbourConstructor.Construct(model).Select(i => job.Points[i].Id.Value).ToArray();
+        return NearestNeighbourConstructor.Construct(model).Select(index => job.Points[index].Id.Value).ToArray();
     }
 
     [Fact]
-    public void Construct_VisitsNearestPointFirst()
+    public void Construct_UnconstrainedLine_VisitsNearestFirst()
     {
-        string[] order = Construct(Job([P("FAR", 100, 0), P("NEAR", 10, 0), P("MID", 50, 0)]));
+        string[] order = ConstructOrder(JobBuilder.WithPoints(PointAt("FAR", 100, 0), PointAt("NEAR", 10, 0), PointAt("MID", 50, 0)).Build());
 
         Assert.Equal(["NEAR", "MID", "FAR"], order);
     }
 
     [Fact]
-    public void Construct_BreaksDistanceTiesByOrdinalId()
+    public void Construct_EquidistantPoints_BreaksTieByOrdinalId()
     {
-        string[] order = Construct(Job([P("b", 10, 0), P("B", -10, 0)]));
+        string[] order = ConstructOrder(JobBuilder.WithPoints(PointAt("b", 10, 0), PointAt("B", -10, 0)).Build());
 
         Assert.Equal("B", order[0]);
     }
 
     [Fact]
-    public void Construct_RespectsPrecedence()
+    public void Construct_PrecedenceOnNearerPoint_VisitsPredecessorFirst()
     {
-        string[] order = Construct(Job([P("FAR", 100, 0), P("NEAR", 10, 0)], precedence: [("FAR", "NEAR")]));
+        string[] order = ConstructOrder(JobBuilder.WithPoints(PointAt("FAR", 100, 0), PointAt("NEAR", 10, 0)).WithPrecedence("FAR", "NEAR").Build());
 
         Assert.Equal(["FAR", "NEAR"], order);
     }
 
     [Fact]
-    public void Construct_VisitsLockedBlockWholeInBaselineOrder()
+    public void Construct_LockedBlock_VisitsWholeBlockInBaselineOrder()
     {
-        string[] order = Construct(Job([P("L1", 100, 0, "G"), P("L2", 5, 0, "G"), P("X", 50, 0)], lockedGroups: ["G"]));
+        DrillJob job = JobBuilder.WithPoints(PointInGroup("L1", 100, 0, "G"), PointInGroup("L2", 5, 0, "G"), PointAt("X", 50, 0)).WithLockedGroup("G").Build();
 
-        Assert.Equal(["X", "L1", "L2"], order);
+        Assert.Equal(["X", "L1", "L2"], ConstructOrder(job));
     }
 }

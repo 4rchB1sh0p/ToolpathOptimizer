@@ -19,16 +19,20 @@ public sealed class CliResult
     /// <summary>Gets the process exit code.</summary>
     public int ExitCode { get; }
 
-    /// <summary>Gets the written report path; empty when none.</summary>
+    /// <summary>Gets the full path of the written report; empty when no report was written.</summary>
     public string ReportPath { get; }
 
-    /// <summary>Gets the errors.</summary>
+    /// <summary>Gets the errors; empty on success.</summary>
     public IReadOnlyList<OutcomeError> Errors { get; }
 
-    /// <summary>Creates a success result.</summary>
-    /// <param name="reportPath">Written report path, or empty.</param>
+    /// <summary>Creates a success result for a command that writes no report.</summary>
     /// <returns>The result.</returns>
-    public static CliResult Success(string reportPath) => new(ExitCodes.Success, reportPath, []);
+    public static CliResult Success() => new(ExitCodes.Success, string.Empty, []);
+
+    /// <summary>Creates a success result for a written report.</summary>
+    /// <param name="reportPath">Full path of the written report.</param>
+    /// <returns>The result.</returns>
+    public static CliResult ReportWritten(string reportPath) => new(ExitCodes.Success, reportPath, []);
 
     /// <summary>Creates a result from a failure outcome.</summary>
     /// <param name="outcome">Failure outcome.</param>
@@ -36,90 +40,29 @@ public sealed class CliResult
     public static CliResult Failure(OperationOutcome outcome)
     {
         ArgumentNullException.ThrowIfNull(outcome);
-        return new CliResult(ExitCodes.For(outcome.Category), string.Empty, outcome.Errors);
+        return new CliResult(ExitCodes.FromCategory(outcome.Category), string.Empty, outcome.Errors);
     }
 
     /// <summary>Writes the envelope as one line of JSON.</summary>
-    /// <param name="writer">Target (stdout).</param>
-    public void WriteTo(TextWriter writer)
+    /// <param name="target">Destination, normally stdout.</param>
+    public void WriteTo(TextWriter target) => JsonLineWriter.WriteLine(target, WriteEnvelope);
+
+    private void WriteEnvelope(Utf8JsonWriter writer)
     {
-        ArgumentNullException.ThrowIfNull(writer);
-        using var buffer = new MemoryStream();
-        using (var json = new Utf8JsonWriter(buffer, new JsonWriterOptions { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping }))
+        writer.WriteStartObject();
+        writer.WriteString("schema_version", ContractVersions.EnvelopeSchemaVersion);
+        writer.WriteString("status", ExitCode == ExitCodes.Success ? "ok" : "error");
+        writer.WriteNumber("exit_code", ExitCode);
+        if (ReportPath.Length > 0)
         {
-            json.WriteStartObject();
-            json.WriteString("schema_version", ContractVersions.EnvelopeSchemaVersion);
-            json.WriteString("status", ExitCode == ExitCodes.Success ? "ok" : "error");
-            json.WriteNumber("exit_code", ExitCode);
-            if (ReportPath.Length > 0)
-            {
-                json.WriteString("report_path", ReportPath);
-            }
-            else
-            {
-                json.WriteNull("report_path");
-            }
-
-            json.WriteStartArray("errors");
-            foreach (OutcomeError error in Errors)
-            {
-                json.WriteStartObject();
-                json.WriteString("code", error.Code);
-                json.WriteString("message", error.Message);
-                json.WriteEndObject();
-            }
-
-            json.WriteEndArray();
-            json.WriteEndObject();
+            writer.WriteString("report_path", ReportPath);
+        }
+        else
+        {
+            writer.WriteNull("report_path");
         }
 
-        writer.Write(System.Text.Encoding.UTF8.GetString(buffer.ToArray()));
-        writer.Write('\n');
-        writer.Flush();
+        ContractJson.WriteCodedMessages(writer, "errors", Errors, error => error.Code, error => error.Message);
+        writer.WriteEndObject();
     }
-}
-
-/// <summary>
-/// Stable exit codes (ADR-0011).
-/// </summary>
-public static class ExitCodes
-{
-    /// <summary>Success.</summary>
-    public const int Success = 0;
-
-    /// <summary>Invalid arguments or configuration.</summary>
-    public const int Arguments = 2;
-
-    /// <summary>Invalid input.</summary>
-    public const int Input = 3;
-
-    /// <summary>Infeasible constraints.</summary>
-    public const int Infeasible = 4;
-
-    /// <summary>Processing failure.</summary>
-    public const int Processing = 5;
-
-    /// <summary>Cancelled.</summary>
-    public const int Cancelled = 6;
-
-    /// <summary>I/O failure.</summary>
-    public const int Io = 7;
-
-    /// <summary>Resource budget exceeded.</summary>
-    public const int Budget = 8;
-
-    /// <summary>Maps an outcome category to an exit code.</summary>
-    /// <param name="category">Outcome category.</param>
-    /// <returns>The exit code.</returns>
-    public static int For(OutcomeCategory category) => category switch
-    {
-        OutcomeCategory.Success => Success,
-        OutcomeCategory.Arguments => Arguments,
-        OutcomeCategory.Input => Input,
-        OutcomeCategory.Infeasible => Infeasible,
-        OutcomeCategory.Cancelled => Cancelled,
-        OutcomeCategory.Io => Io,
-        OutcomeCategory.Budget => Budget,
-        _ => Processing,
-    };
 }

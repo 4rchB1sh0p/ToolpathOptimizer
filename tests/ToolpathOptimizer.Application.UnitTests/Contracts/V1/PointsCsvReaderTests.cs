@@ -2,45 +2,45 @@ using System.Text;
 using ToolpathOptimizer.Application.Contracts.V1;
 using ToolpathOptimizer.Application.Limits;
 using ToolpathOptimizer.Application.Outcomes;
+using ToolpathOptimizer.Application.UnitTests.Support;
 
 namespace ToolpathOptimizer.Application.UnitTests.Contracts.V1;
 
+/// <summary>Tests for <see cref="PointsCsvReader"/>: one rejection rule per case.</summary>
 public sealed class PointsCsvReaderTests
 {
     private const string Header = "point_id,x_mm,y_mm,sequence,operation_group\n";
 
-    private static Result<IReadOnlyList<PointRow>> Read(string text, AnalysisLimitsOptions? limits = null) =>
-        PointsCsvReader.Read(Encoding.UTF8.GetBytes(text), "holes.csv", limits ?? new AnalysisLimitsOptions());
+    private static Result<IReadOnlyList<PointRow>> Read(string text) => Read(text, new AnalysisLimitsOptions());
 
-    private static void AssertRejected(string expectedCode, string text, AnalysisLimitsOptions? limits = null)
+    private static Result<IReadOnlyList<PointRow>> Read(string text, AnalysisLimitsOptions limits) =>
+        PointsCsvReader.Read(Encoding.UTF8.GetBytes(text), "holes.csv", limits);
+
+    private static string FirstCode(Result<IReadOnlyList<PointRow>> result) =>
+        result.IsSuccess ? "(success)" : result.Outcome.Errors[0].Code;
+
+    [Fact]
+    public void Read_SampleFile_ReturnsAllRows()
     {
-        Result<IReadOnlyList<PointRow>> result = Read(text, limits);
-        Assert.False(result.IsSuccess);
-        Assert.Equal(expectedCode, result.Outcome.Errors[0].Code);
+        Assert.Equal(4, Read(TestInputs.SquareCsv).Value.Count);
     }
 
     [Fact]
-    public void Read_ParsesSampleFile()
+    public void Read_SampleFile_ParsesCoordinatesAndGroup()
     {
-        Result<IReadOnlyList<PointRow>> result = Read(Inputs.SquareCsv);
+        PointRow second = Read(TestInputs.SquareCsv).Value[1];
 
-        Assert.True(result.IsSuccess);
-        Assert.Equal(4, result.Value.Count);
-        Assert.Equal(100, result.Value[1].XMm);
-        Assert.Equal("A", result.Value[0].OperationGroup);
+        Assert.Equal((100.0, 0.0, "A"), (second.XMm, second.YMm, second.OperationGroup));
     }
 
     [Fact]
-    public void Read_AcceptsBomCrlfEmptyGroupAndExponent()
+    public void Read_BomCrlfEmptyGroupAndExponent_ParsesRow()
     {
         byte[] bytes = [0xEF, 0xBB, 0xBF, .. Encoding.UTF8.GetBytes("point_id,x_mm,y_mm,sequence,operation_group\r\nP1,-1.5e2,+.5,1,\r\n")];
 
-        Result<IReadOnlyList<PointRow>> result = PointsCsvReader.Read(bytes, "holes.csv", new AnalysisLimitsOptions());
+        PointRow row = PointsCsvReader.Read(bytes, "holes.csv", new AnalysisLimitsOptions()).Value[0];
 
-        Assert.True(result.IsSuccess);
-        Assert.Equal(-150, result.Value[0].XMm);
-        Assert.Equal(0.5, result.Value[0].YMm);
-        Assert.Equal(string.Empty, result.Value[0].OperationGroup);
+        Assert.Equal((-150.0, 0.5, string.Empty), (row.XMm, row.YMm, row.OperationGroup));
     }
 
     [Theory]
@@ -65,45 +65,56 @@ public sealed class PointsCsvReaderTests
     [InlineData(ErrorCodes.InputSequenceInvalid, Header + "A,1,2,x,\n")]
     [InlineData(ErrorCodes.InputCoincidentPoints, Header + "A,1,2,1,\nB,1.0005,2,2,\n")]
     [InlineData(ErrorCodes.InputLimitExceeded, Header + "A,10000.5,2,1,\n")]
-    public void Read_RejectsContractViolation(string expectedCode, string text)
+    public void Read_ContractViolation_ReturnsStableCode(string expectedCode, string text)
     {
-        AssertRejected(expectedCode, text);
+        Assert.Equal(expectedCode, FirstCode(Read(text)));
     }
 
     [Fact]
-    public void Read_RejectsInvalidUtf8()
+    public void Read_InvalidUtf8_ReturnsEncodingError()
     {
         byte[] bytes = [.. Encoding.UTF8.GetBytes(Header + "A,1,2,1,"), 0xFF, 0x0A];
 
         Result<IReadOnlyList<PointRow>> result = PointsCsvReader.Read(bytes, "holes.csv", new AnalysisLimitsOptions());
 
-        Assert.Equal(ErrorCodes.InputInvalidEncoding, result.Outcome.Errors[0].Code);
+        Assert.Equal(ErrorCodes.InputInvalidEncoding, FirstCode(result));
     }
 
     [Fact]
-    public void Read_AcceptsPointCountAtLimitAndRejectsOneMore()
+    public void Read_PointCountAtLimit_Succeeds()
     {
-        var limits = new AnalysisLimitsOptions { MaxPoints = 2 };
-        string two = Header + "A,1,2,1,\nB,3,4,2,\n";
+        Result<IReadOnlyList<PointRow>> result = Read(Header + "A,1,2,1,\nB,3,4,2,\n", new AnalysisLimitsOptions { MaxPoints = 2 });
 
-        Assert.True(Read(two, limits).IsSuccess);
-        AssertRejected(ErrorCodes.InputLimitExceeded, two + "C,5,6,3,\n", limits);
+        Assert.True(result.IsSuccess, FirstCode(result));
     }
 
     [Fact]
-    public void Read_RejectsFileOverByteLimit()
+    public void Read_PointCountOverLimit_ReturnsLimitExceeded()
     {
-        AssertRejected(ErrorCodes.InputLimitExceeded, Inputs.SquareCsv, new AnalysisLimitsOptions { MaxPointsFileBytes = 10 });
+        Result<IReadOnlyList<PointRow>> result = Read(Header + "A,1,2,1,\nB,3,4,2,\nC,5,6,3,\n", new AnalysisLimitsOptions { MaxPoints = 2 });
+
+        Assert.Equal(ErrorCodes.InputLimitExceeded, FirstCode(result));
     }
 
     [Fact]
-    public void Read_TruncatesEchoedInputInMessages()
+    public void Read_FileOverByteLimit_ReturnsLimitExceeded()
     {
-        string longId = "=" + new string('x', 500);
+        Assert.Equal(ErrorCodes.InputLimitExceeded, FirstCode(Read(TestInputs.SquareCsv, new AnalysisLimitsOptions { MaxPointsFileBytes = 10 })));
+    }
 
-        Result<IReadOnlyList<PointRow>> result = Read(Header + longId + ",1,2,1,\n");
+    [Fact]
+    public void Read_LongInvalidIdentifier_TruncatesEchoedInput()
+    {
+        string message = Read(Header + "=" + new string('x', 500) + ",1,2,1,\n").Outcome.Errors[0].Message;
 
-        Assert.DoesNotContain(new string('x', 100), result.Outcome.Errors[0].Message, StringComparison.Ordinal);
-        Assert.Contains("line 2", result.Outcome.Errors[0].Message, StringComparison.Ordinal);
+        Assert.DoesNotContain(new string('x', 100), message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Read_InvalidRow_NamesLineInMessage()
+    {
+        string message = Read(Header + "=bad,1,2,1,\n").Outcome.Errors[0].Message;
+
+        Assert.Contains("line 2", message, StringComparison.Ordinal);
     }
 }

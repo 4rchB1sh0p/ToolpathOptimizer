@@ -1,27 +1,15 @@
 namespace ToolpathOptimizer.Core.Optimisation;
 
 /// <summary>
-/// Why local search stopped.
-/// </summary>
-public enum SearchTermination
-{
-    /// <summary>A full pass found no improving feasible move.</summary>
-    Converged,
-
-    /// <summary>A pass or move-evaluation budget was reached first.</summary>
-    BudgetExhausted,
-}
-
-/// <summary>
-/// Counters describing a local-search run.
+/// Counters describing a local-search run, recorded in the report's <c>search</c> block.
 /// </summary>
 public sealed class SearchStatistics
 {
     /// <summary>Creates statistics.</summary>
-    /// <param name="passes">Passes started.</param>
-    /// <param name="moveEvaluations">Moves evaluated.</param>
-    /// <param name="acceptedMoves">Moves accepted.</param>
-    /// <param name="termination">Termination reason.</param>
+    /// <param name="passes">Number of 2-opt passes started.</param>
+    /// <param name="moveEvaluations">Number of candidate moves whose distance delta was computed.</param>
+    /// <param name="acceptedMoves">Number of improving, feasible moves applied.</param>
+    /// <param name="termination">Why the search stopped.</param>
     public SearchStatistics(long passes, long moveEvaluations, long acceptedMoves, SearchTermination termination)
     {
         Passes = passes;
@@ -30,15 +18,15 @@ public sealed class SearchStatistics
         Termination = termination;
     }
 
-    /// <summary>Gets the number of passes started.</summary>
+    /// <summary>Gets the number of 2-opt passes started.</summary>
     public long Passes { get; }
 
-    /// <summary>Gets the number of move evaluations.</summary>
+    /// <summary>Gets the number of candidate moves whose distance delta was computed.</summary>
     public long MoveEvaluations { get; }
 
-    /// <summary>Gets the number of accepted moves.</summary>
+    /// <summary>Gets the number of improving, feasible moves applied.</summary>
     public long AcceptedMoves { get; }
 
-    /// <summary>Gets the termination reason.</summary>
+    /// <summary>Gets why the search stopped.</summary>
     public SearchTermination Termination { get; }
 }

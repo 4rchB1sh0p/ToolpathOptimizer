@@ -22,34 +22,47 @@ namespace ToolpathOptimizer.Cli;
 /// </summary>
 public static partial class CliApplication
 {
-    /// <summary>Runs the CLI.</summary>
+    private const string EnvironmentVariablePrefix = "TOOLPATH_";
+
+    /// <summary>Runs the CLI with production services.</summary>
     /// <param name="args">Command-line arguments.</param>
     /// <param name="stdout">Writer for the result envelope.</param>
-    /// <param name="configureServices">Optional service overrides (tests).</param>
-    /// <param name="cancellationToken">External cancellation (tests).</param>
+    /// <param name="cancellationToken">External cancellation.</param>
     /// <returns>The process exit code.</returns>
-    public static async Task<int> RunAsync(string[] args, TextWriter stdout, Action<IServiceCollection>? configureServices, CancellationToken cancellationToken)
+    public static Task<int> RunAsync(string[] args, TextWriter stdout, CancellationToken cancellationToken) =>
+        RunAsync(args, stdout, _ => { }, cancellationToken);
+
+    /// <summary>Runs the CLI with service overrides (used by tests to replace the clock).</summary>
+    /// <param name="args">Command-line arguments.</param>
+    /// <param name="stdout">Writer for the result envelope.</param>
+    /// <param name="configureServices">Applied after the default registrations.</param>
+    /// <param name="cancellationToken">External cancellation.</param>
+    /// <returns>The process exit code.</returns>
+    public static async Task<int> RunAsync(string[] args, TextWriter stdout, Action<IServiceCollection> configureServices, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(stdout);
+        ArgumentNullException.ThrowIfNull(configureServices);
         Result<CliArguments> parsed = CliArgumentParser.Parse(args);
         if (!parsed.IsSuccess)
         {
             return Emit(stdout, CliResult.Failure(parsed.Outcome));
         }
 
-        CliArguments arguments = parsed.Value;
-        if (arguments.Command == CliCommand.Help)
+        switch (parsed.Value.Command)
         {
-            await stdout.WriteAsync(CliArgumentParser.Usage).ConfigureAwait(false);
-            return ExitCodes.Success;
+            case CliCommand.Help:
+                await stdout.WriteAsync(CliArgumentParser.Usage).ConfigureAwait(false);
+                return ExitCodes.Success;
+            case CliCommand.Version:
+                JsonLineWriter.WriteLine(stdout, WriteVersion);
+                return ExitCodes.Success;
+            default:
+                return Emit(stdout, await RunHostedCommandAsync(parsed.Value, configureServices, cancellationToken).ConfigureAwait(false));
         }
+    }
 
-        if (arguments.Command == CliCommand.Version)
-        {
-            WriteVersion(stdout);
-            return ExitCodes.Success;
-        }
-
+    private static async Task<CliResult> RunHostedCommandAsync(CliArguments arguments, Action<IServiceCollection> configureServices, CancellationToken cancellationToken)
+    {
         using IHost host = BuildHost(configureServices);
         try
         {
@@ -57,47 +70,47 @@ public static partial class CliApplication
         }
         catch (OptionsValidationException ex)
         {
-            return Emit(stdout, CliResult.Failure(OperationOutcome.Failure(ErrorCodes.ConfigInvalid, $"Invalid configuration: {string.Join(" ", ex.Failures)}")));
+            return CliResult.Failure(OperationOutcome.Failure(ErrorCodes.ConfigInvalid, $"Invalid configuration: {string.Join(" ", ex.Failures)}"));
         }
         catch (OperationCanceledException)
         {
-            return Emit(stdout, CliResult.Failure(OperationOutcome.Failure(ErrorCodes.Cancelled, "The command was cancelled.")));
+            return CliResult.Failure(OperationOutcome.Failure(ErrorCodes.Cancelled, ErrorMessages.Cancelled));
         }
 
-        CliResult result = await ExecuteAsync(host.Services, arguments, cancellationToken).ConfigureAwait(false);
+        CliResult result = await ExecuteCommandAsync(host.Services, arguments, cancellationToken).ConfigureAwait(false);
         await host.StopAsync(CancellationToken.None).ConfigureAwait(false);
-        return Emit(stdout, result);
+        return result;
     }
 
-    private static async Task<CliResult> ExecuteAsync(IServiceProvider services, CliArguments arguments, CancellationToken cancellationToken)
+    private static async Task<CliResult> ExecuteCommandAsync(IServiceProvider services, CliArguments arguments, CancellationToken cancellationToken)
     {
         ILogger logger = services.GetRequiredService<ILoggerFactory>().CreateLogger("ToolpathOptimizer.Cli");
         IHostApplicationLifetime lifetime = services.GetRequiredService<IHostApplicationLifetime>();
-        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, lifetime.ApplicationStopping);
+        using var linkedSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, lifetime.ApplicationStopping);
         LogCommandStarted(logger, arguments.Command);
         try
         {
             CliResult result = arguments.Command == CliCommand.Analyze
-                ? await services.GetRequiredService<AnalyzeCommand>().ExecuteAsync(arguments, linked.Token).ConfigureAwait(false)
-                : await services.GetRequiredService<ValidateCommand>().ExecuteAsync(arguments, linked.Token).ConfigureAwait(false);
+                ? await services.GetRequiredService<AnalyzeCommand>().ExecuteAsync(arguments, linkedSource.Token).ConfigureAwait(false)
+                : await services.GetRequiredService<ValidateCommand>().ExecuteAsync(arguments, linkedSource.Token).ConfigureAwait(false);
             LogCommandFinished(logger, arguments.Command, result.ExitCode);
             return result;
         }
         catch (OperationCanceledException)
         {
             LogCommandFinished(logger, arguments.Command, ExitCodes.Cancelled);
-            return CliResult.Failure(OperationOutcome.Failure(ErrorCodes.Cancelled, "The command was cancelled."));
+            return CliResult.Failure(OperationOutcome.Failure(ErrorCodes.Cancelled, ErrorMessages.Cancelled));
         }
     }
 
-    private static IHost BuildHost(Action<IServiceCollection>? configureServices)
+    private static IHost BuildHost(Action<IServiceCollection> configureServices)
     {
         HostApplicationBuilder builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings
         {
             Args = [],
             ContentRootPath = AppContext.BaseDirectory,
         });
-        builder.Configuration.AddEnvironmentVariables("TOOLPATH_");
+        builder.Configuration.AddEnvironmentVariables(EnvironmentVariablePrefix);
         builder.Logging.ClearProviders();
         builder.Logging.AddConsole(options => options.LogToStandardErrorThreshold = LogLevel.Trace);
         builder.Services.Configure<ConsoleLifetimeOptions>(options => options.SuppressStatusMessages = true);
@@ -106,29 +119,21 @@ public static partial class CliApplication
         builder.Services.AddSingleton<JobInputLoader>();
         builder.Services.AddSingleton<AnalyzeCommand>();
         builder.Services.AddSingleton<ValidateCommand>();
-        configureServices?.Invoke(builder.Services);
+        configureServices(builder.Services);
         return builder.Build();
     }
 
-    private static void WriteVersion(TextWriter stdout)
+    private static void WriteVersion(Utf8JsonWriter writer)
     {
         ToolInfo tool = ToolInfo.FromAssembly();
-        using var buffer = new MemoryStream();
-        using (var json = new Utf8JsonWriter(buffer, new JsonWriterOptions { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping }))
-        {
-            json.WriteStartObject();
-            json.WriteString("tool_name", tool.ToolName);
-            json.WriteString("tool_version", tool.ToolVersion);
-            json.WriteString("algorithm_name", RouteOptimiser.AlgorithmName);
-            json.WriteString("algorithm_version", RouteOptimiser.AlgorithmVersion);
-            json.WriteString("input_schema_version", ContractVersions.ManifestSchemaVersion);
-            json.WriteString("report_schema_version", ContractVersions.ReportSchemaVersion);
-            json.WriteEndObject();
-        }
-
-        stdout.Write(System.Text.Encoding.UTF8.GetString(buffer.ToArray()));
-        stdout.Write('\n');
-        stdout.Flush();
+        writer.WriteStartObject();
+        writer.WriteString("tool_name", tool.ToolName);
+        writer.WriteString("tool_version", tool.ToolVersion);
+        writer.WriteString("algorithm_name", RouteOptimiser.AlgorithmName);
+        writer.WriteString("algorithm_version", RouteOptimiser.AlgorithmVersion);
+        writer.WriteString("input_schema_version", ContractVersions.ManifestSchemaVersion);
+        writer.WriteString("report_schema_version", ContractVersions.ReportSchemaVersion);
+        writer.WriteEndObject();
     }
 
     private static int Emit(TextWriter stdout, CliResult result)

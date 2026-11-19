@@ -1,16 +1,18 @@
 using ToolpathOptimizer.Core.Domain;
 using ToolpathOptimizer.Core.Units;
+using ToolpathOptimizer.Core.UnitTests.Support;
 using ToolpathOptimizer.Core.Verification;
-using static ToolpathOptimizer.Core.UnitTests.TestJobs;
+using static ToolpathOptimizer.Core.UnitTests.Support.TestData;
 
 namespace ToolpathOptimizer.Core.UnitTests.Verification;
 
+/// <summary>Tests for <see cref="RouteDistanceCalculator"/>.</summary>
 public sealed class RouteDistanceCalculatorTests
 {
     [Fact]
-    public void Calculate_SquareTourWithoutEnd_IsThreeSides()
+    public void Calculate_SquareWithoutEnd_IsThreeSides()
     {
-        DrillJob job = Job([P("H01", 0, 0), P("H02", 100, 0), P("H03", 100, 100), P("H04", 0, 100)]);
+        DrillJob job = JobBuilder.WithPoints(PointAt("H01", 0, 0), PointAt("H02", 100, 0), PointAt("H03", 100, 100), PointAt("H04", 0, 100)).Build();
 
         Length distance = RouteDistanceCalculator.Calculate(job, job.CreateBaselineRoute().OrderedIds);
 
@@ -18,9 +20,9 @@ public sealed class RouteDistanceCalculatorTests
     }
 
     [Fact]
-    public void Calculate_IncludesStartAndEndLegs()
+    public void Calculate_FixedEnd_IncludesStartAndEndLegs()
     {
-        DrillJob job = Job([P("A", 3, 4)], startMm: (0, 0), endMm: (6, 8));
+        DrillJob job = JobBuilder.WithPoints(PointAt("A", 3, 4)).EndingAt(6, 8).Build();
 
         Length distance = RouteDistanceCalculator.Calculate(job, job.CreateBaselineRoute().OrderedIds);
 
@@ -28,10 +30,10 @@ public sealed class RouteDistanceCalculatorTests
     }
 
     [Fact]
-    public void Calculate_RejectsUnknownPoint()
+    public void Calculate_UnknownPoint_Throws()
     {
-        DrillJob job = Job([P("A", 3, 4)]);
+        DrillJob job = JobBuilder.WithPoints(PointAt("A", 3, 4)).Build();
 
-        Assert.Throws<ArgumentException>(() => RouteDistanceCalculator.Calculate(job, Route("Z").OrderedIds));
+        Assert.Throws<ArgumentException>(() => RouteDistanceCalculator.Calculate(job, RouteOf("Z").OrderedIds));
     }
 }

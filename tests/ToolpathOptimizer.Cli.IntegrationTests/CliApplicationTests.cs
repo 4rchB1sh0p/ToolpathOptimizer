@@ -1,80 +1,78 @@
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
+using ToolpathOptimizer.Cli.IntegrationTests.Support;
 
 namespace ToolpathOptimizer.Cli.IntegrationTests;
 
-/// <summary>In-process tests for paths that are hard to trigger in a child process (cancellation, deadline).</summary>
+/// <summary>In-process tests of <see cref="CliApplication"/> for paths that are hard to trigger in a child process.</summary>
 public sealed class CliApplicationTests : IDisposable
 {
-    private readonly string _outputDirectory = Path.Combine(Path.GetTempPath(), "tpo-cli-app-tests", Guid.NewGuid().ToString("N"));
+    private readonly OutputDirectory _output = new();
 
-    public CliApplicationTests()
-    {
-        Directory.CreateDirectory(_outputDirectory);
-    }
+    /// <inheritdoc />
+    public void Dispose() => _output.Dispose();
 
-    public void Dispose()
-    {
-        try
-        {
-            Directory.Delete(_outputDirectory, recursive: true);
-        }
-        catch (IOException)
-        {
-            // Best effort cleanup.
-        }
-    }
+    private string[] CreateAnalyzeArguments() =>
+        ["analyze", "--points", CliProcess.SamplePath("plate.csv"), "--job", CliProcess.SamplePath("plate-job.json"), "--output", _output.PathOf("r.json")];
 
-    private string[] AnalyzeArgs() =>
-        ["analyze", "--points", CliProcess.Samples("plate.csv"), "--job", CliProcess.Samples("plate-job.json"), "--output", Path.Combine(_outputDirectory, "r.json")];
-
-    private static string FirstCode(StringWriter stdout) =>
+    private static string ReadFirstErrorCode(StringWriter stdout) =>
         JsonDocument.Parse(stdout.ToString()).RootElement.GetProperty("errors")[0].GetProperty("code").GetString()!;
 
-    [Fact]
-    public async Task Cancellation_ExitsSixAndLeavesNoFile()
+    private async Task<(int ExitCode, string Code)> RunCancelledAsync()
     {
         using var cancelled = new CancellationTokenSource();
         await cancelled.CancelAsync();
         using var stdout = new StringWriter();
+        int exitCode = await CliApplication.RunAsync(CreateAnalyzeArguments(), stdout, cancelled.Token);
+        return (exitCode, ReadFirstErrorCode(stdout));
+    }
 
-        int exitCode = await CliApplication.RunAsync(AnalyzeArgs(), stdout, configureServices: null, cancelled.Token);
-
-        Assert.Equal(6, exitCode);
-        Assert.Equal("CANCELLED", FirstCode(stdout));
-        Assert.Empty(Directory.GetFiles(_outputDirectory));
+    private async Task<(int ExitCode, string Code)> RunPastDeadlineAsync()
+    {
+        using var stdout = new StringWriter();
+        int exitCode = await CliApplication.RunAsync(
+            CreateAnalyzeArguments(),
+            stdout,
+            services => services.AddSingleton<TimeProvider>(new ExpiredDeadlineTimeProvider()),
+            CancellationToken.None);
+        return (exitCode, ReadFirstErrorCode(stdout));
     }
 
     [Fact]
-    public async Task DeadlineReached_ExitsEightAndLeavesNoFile()
+    public async Task RunAsync_Cancelled_ExitsSix()
     {
-        using var stdout = new StringWriter();
-
-        int exitCode = await CliApplication.RunAsync(AnalyzeArgs(), stdout, services => services.AddSingleton<TimeProvider>(new ExpiredDeadlineTimeProvider()), CancellationToken.None);
-
-        Assert.Equal(8, exitCode);
-        Assert.Equal("OPT_DEADLINE_EXCEEDED", FirstCode(stdout));
-        Assert.Empty(Directory.GetFiles(_outputDirectory));
+        Assert.Equal((6, "CANCELLED"), await RunCancelledAsync());
     }
 
     [Fact]
-    public async Task Help_PrintsUsageAndExitsZero()
+    public async Task RunAsync_Cancelled_LeavesNoFile()
+    {
+        await RunCancelledAsync();
+
+        Assert.Empty(_output.Files);
+    }
+
+    [Fact]
+    public async Task RunAsync_DeadlineReached_ExitsEight()
+    {
+        Assert.Equal((8, "OPT_DEADLINE_EXCEEDED"), await RunPastDeadlineAsync());
+    }
+
+    [Fact]
+    public async Task RunAsync_DeadlineReached_LeavesNoFile()
+    {
+        await RunPastDeadlineAsync();
+
+        Assert.Empty(_output.Files);
+    }
+
+    [Fact]
+    public async Task RunAsync_Help_PrintsUsage()
     {
         using var stdout = new StringWriter();
 
-        int exitCode = await CliApplication.RunAsync(["help"], stdout, null, CancellationToken.None);
+        int exitCode = await CliApplication.RunAsync(["help"], stdout, CancellationToken.None);
 
-        Assert.Equal(0, exitCode);
-        Assert.Contains("toolpath-optimize analyze", stdout.ToString(), StringComparison.Ordinal);
-    }
-
-    /// <summary>A clock whose timers fire immediately, simulating a reached wall-clock deadline.</summary>
-    private sealed class ExpiredDeadlineTimeProvider : TimeProvider
-    {
-        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
-        {
-            callback(state);
-            return System.CreateTimer(_ => { }, null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
-        }
+        Assert.Equal((0, true), (exitCode, stdout.ToString().Contains("toolpath-optimize analyze", StringComparison.Ordinal)));
     }
 }

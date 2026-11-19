@@ -1,12 +1,13 @@
+using System.Reflection;
 using NetArchTest.Rules;
 using ToolpathOptimizer.Core.Domain;
 
 namespace ToolpathOptimizer.Core.UnitTests;
 
-/// <summary>Enforces ADR-0001 (pure Core) and ADR-0007 (independent validator).</summary>
+/// <summary>Enforces ADR-0001 (pure Core), ADR-0007 (independent validator) and D-014 (no records).</summary>
 public sealed class ArchitectureTests
 {
-    private static readonly System.Reflection.Assembly s_core = typeof(PointId).Assembly;
+    private static readonly Assembly _coreAssembly = typeof(PointId).Assembly;
 
     [Theory]
     [InlineData("ToolpathOptimizer.Application")]
@@ -15,30 +16,30 @@ public sealed class ArchitectureTests
     [InlineData("Microsoft.AspNetCore")]
     [InlineData("System.IO")]
     [InlineData("System.Net")]
-    public void Core_HasNoOuterOrIoDependency(string forbidden)
+    public void CoreTypes_ForbiddenNamespace_AreNotReferenced(string forbidden)
     {
-        TestResult result = Types.InAssembly(s_core).ShouldNot().HaveDependencyOn(forbidden).GetResult();
+        TestResult result = Types.InAssembly(_coreAssembly).ShouldNot().HaveDependencyOn(forbidden).GetResult();
 
-        Assert.True(result.IsSuccessful, string.Join(", ", result.FailingTypeNames ?? []));
+        Assert.True(result.IsSuccessful, "Types depending on " + forbidden + ": " + string.Join(", ", result.FailingTypeNames ?? []));
     }
 
     [Theory]
     [InlineData("ToolpathOptimizer.Core.Optimisation")]
     [InlineData("ToolpathOptimizer.Core.Validation")]
-    public void Verification_DoesNotDependOnOptimiserState(string forbidden)
+    public void VerificationTypes_OptimiserNamespace_AreNotReferenced(string forbidden)
     {
-        TestResult result = Types.InAssembly(s_core)
+        TestResult result = Types.InAssembly(_coreAssembly)
             .That().ResideInNamespace("ToolpathOptimizer.Core.Verification")
             .ShouldNot().HaveDependencyOn(forbidden)
             .GetResult();
 
-        Assert.True(result.IsSuccessful, string.Join(", ", result.FailingTypeNames ?? []));
+        Assert.True(result.IsSuccessful, "Verification types depending on " + forbidden + ": " + string.Join(", ", result.FailingTypeNames ?? []));
     }
 
     [Fact]
-    public void Core_DeclaresNoRecordTypes()
+    public void CoreTypes_AnyType_IsNotARecord()
     {
-        Type[] records = s_core.GetTypes().Where(t => t.GetMethod("<Clone>$") is not null).ToArray();
+        Type[] records = _coreAssembly.GetTypes().Where(type => type.GetMethod("<Clone>$") is not null).ToArray();
 
         Assert.Empty(records);
     }

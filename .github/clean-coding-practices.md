@@ -16,7 +16,8 @@ Apply these rules to all new and modified code. Keep code tidy, modular, readabl
 - Most important naming rule: be consistent across the repository.
 
 ## Scope Indicators
-- Private/protected members are prefixed with underscore: `_windowSize`.
+- Private/protected members are prefixed with underscore: `_windowSize`. This includes `static` and `static readonly` fields (`_rootFields`, never `s_rootFields`); constants stay `PascalCase`.
+- Enforced in the build: `.editorconfig` sets IDE1006 to `warning` and `EnforceCodeStyleInBuild` plus warnings-as-errors turn violations into build errors.
 - Public members are named normally per C# conventions.
 - Constants should be clearly recognizable and consistent project-wide.
   - If subsystem standard uses `UPPER_SNAKE_CASE`, follow it there.
@@ -102,6 +103,12 @@ Tests must be:
 - Reliable in local and CI environments
 - Maintainable and readable
 - Actionable when failing (clear failure messages)
+
+Conventions:
+- Name tests `Method_Scenario_ExpectedResult` (e.g. `Read_FileOverByteLimit_ReturnsLimitExceeded`).
+- Give every `Assert.True`/`Assert.False` a message; prefer `Assert.Equal` on a tuple when one behaviour has several observable parts.
+- Share expensive setup (child processes, hosts) through fixtures rather than asserting many behaviours in one test.
+- Tag child-process suites `[Trait("Category", "Process")]` so they can be filtered (`--filter Category!=Process`).
 
 ## UI/CSS Baseline (When Applicable)
 ```css

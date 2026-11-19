@@ -13,9 +13,9 @@ public sealed class ProjectAccess
     private readonly IProjectRepository _repository;
 
     /// <summary>Creates the access helper.</summary>
-    /// <param name="principal">Current principal.</param>
-    /// <param name="tenant">Current tenant.</param>
-    /// <param name="repository">Project repository.</param>
+    /// <param name="principal">Authenticated user of the current request.</param>
+    /// <param name="tenant">Tenant of the current request.</param>
+    /// <param name="repository">Used to resolve projects within the tenant.</param>
     public ProjectAccess(ICurrentPrincipal principal, ITenantContext tenant, IProjectRepository repository)
     {
         _principal = principal;
@@ -46,23 +46,11 @@ public sealed class ProjectAccess
 
     /// <summary>Authorises an action and loads a project visible to the current tenant.</summary>
     /// <param name="action">Requested action.</param>
-    /// <param name="projectId">Project.</param>
-    /// <returns>The project, or the failure.</returns>
+    /// <param name="projectId">Project the action targets.</param>
+    /// <returns>The project, or the authorisation or not-found failure.</returns>
     public Result<Project> AuthorizeProject(ProjectAction action, Guid projectId)
     {
         OperationOutcome authorized = Authorize(action);
-        if (!authorized.IsSuccess)
-        {
-            return Result<Project>.Failure(authorized);
-        }
-
-        Project? project = _repository.FindProject(_tenant.TenantId, projectId);
-        return project is null ? NotFound<Project>("Project") : Result<Project>.Success(project);
+        return authorized.IsSuccess ? _repository.FindProject(_tenant.TenantId, projectId) : Result<Project>.Failure(authorized);
     }
-
-    /// <summary>Creates a not-found failure.</summary>
-    /// <typeparam name="T">Result type.</typeparam>
-    /// <param name="what">Resource kind.</param>
-    /// <returns>The failure.</returns>
-    public static Result<T> NotFound<T>(string what) => Result<T>.Failure(ErrorCodes.ResourceNotFound, $"{what} not found.");
 }

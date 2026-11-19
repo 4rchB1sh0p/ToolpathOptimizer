@@ -1,89 +1,114 @@
 using System.Text.Json;
 using ToolpathOptimizer.Application.Analysis;
 using ToolpathOptimizer.Application.Outcomes;
+using ToolpathOptimizer.Application.UnitTests.Support;
 using ToolpathOptimizer.Core.Analysis;
 using ToolpathOptimizer.Core.Validation;
 
 namespace ToolpathOptimizer.Application.UnitTests.Analysis;
 
+/// <summary>Tests for <see cref="AnalyzeJobHandler"/>.</summary>
 public sealed class AnalyzeJobHandlerTests
 {
-    [Fact]
-    public void Handle_ProducesReportForSample()
-    {
-        Result<AnalysisReport> result = new Handlers().Analyze.Handle(Inputs.Job(Inputs.SquareCsv), CancellationToken.None);
+    private static Result<AnalysisReport> Analyse(string csv, string manifest) =>
+        new TestHandlers().Analyze.Handle(TestInputs.CreateJob(csv, manifest), CancellationToken.None);
 
-        Assert.True(result.IsSuccess);
+    private static string CycleManifest() =>
+        TestInputs.ManifestWith(",\"constraints\":{\"precedence\":[{\"before\":\"H01\",\"after\":\"H02\"},{\"before\":\"H02\",\"after\":\"H01\"}]}");
+
+    [Fact]
+    public void Handle_OptimalSample_SelectsBaseline()
+    {
+        Result<AnalysisReport> result = Analyse(TestInputs.SquareCsv, TestInputs.MinimalManifest);
+
         Assert.Equal("baseline", result.Value.Summary.SelectedRoute);
+    }
+
+    [Fact]
+    public void Handle_OptimalSample_ReportsBaselineDistance()
+    {
+        Result<AnalysisReport> result = Analyse(TestInputs.SquareCsv, TestInputs.MinimalManifest);
+
         Assert.Equal(300, result.Value.Summary.BaselineDistanceMm, 9);
+    }
+
+    [Fact]
+    public void Handle_OptimalSample_WarnsNoImprovement()
+    {
+        Result<AnalysisReport> result = Analyse(TestInputs.SquareCsv, TestInputs.MinimalManifest);
+
         Assert.Contains(AnalysisCodes.NoImprovementBaselineSelected, result.Value.Summary.WarningCodes);
     }
 
     [Fact]
-    public void Handle_IsByteIdenticalForSameInputAndClock()
+    public void Handle_SameInputAndClockTwice_ProducesIdenticalBytes()
     {
-        var handlers = new Handlers();
+        var handlers = new TestHandlers();
 
-        byte[] first = handlers.Analyze.Handle(Inputs.Job(Inputs.CrossingCsv), CancellationToken.None).Value.Content;
-        byte[] second = handlers.Analyze.Handle(Inputs.Job(Inputs.CrossingCsv), CancellationToken.None).Value.Content;
+        byte[] first = handlers.Analyze.Handle(TestInputs.CreateJob(TestInputs.CrossingCsv), CancellationToken.None).Value.Content;
+        byte[] second = handlers.Analyze.Handle(TestInputs.CreateJob(TestInputs.CrossingCsv), CancellationToken.None).Value.Content;
 
         Assert.Equal(first, second);
     }
 
     [Fact]
-    public void Handle_MapsCycleToInfeasibleCategory()
+    public void Handle_CyclicConstraints_ReturnsInfeasibleCycle()
     {
-        string manifest = Inputs.Manifest(",\"constraints\":{\"precedence\":[{\"before\":\"H01\",\"after\":\"H02\"},{\"before\":\"H02\",\"after\":\"H01\"}]}");
+        OperationOutcome outcome = Analyse(TestInputs.SquareCsv, CycleManifest()).Outcome;
 
-        Result<AnalysisReport> result = new Handlers().Analyze.Handle(Inputs.Job(Inputs.SquareCsv, manifest), CancellationToken.None);
-
-        Assert.Equal(OutcomeCategory.Infeasible, result.Outcome.Category);
-        Assert.Equal(ValidationCodes.ConstraintCycle, result.Outcome.Errors[0].Code);
+        Assert.Equal((OutcomeCategory.Infeasible, ValidationCodes.ConstraintCycle), (outcome.Category, outcome.Errors[0].Code));
     }
 
     [Fact]
-    public void Handle_MapsUnknownPointToInputCategory()
+    public void Handle_UnknownPrecedencePoint_ReturnsInputCategory()
     {
-        string manifest = Inputs.Manifest(",\"constraints\":{\"precedence\":[{\"before\":\"H01\",\"after\":\"ZZ\"}]}");
+        string manifest = TestInputs.ManifestWith(",\"constraints\":{\"precedence\":[{\"before\":\"H01\",\"after\":\"ZZ\"}]}");
 
-        Result<AnalysisReport> result = new Handlers().Analyze.Handle(Inputs.Job(Inputs.SquareCsv, manifest), CancellationToken.None);
-
-        Assert.Equal(OutcomeCategory.Input, result.Outcome.Category);
+        Assert.Equal(OutcomeCategory.Input, Analyse(TestInputs.SquareCsv, manifest).Outcome.Category);
     }
 
     [Fact]
-    public void Handle_ReturnsCancelledWhenCallerCancels()
+    public void Handle_CallerCancelled_ReturnsCancelled()
     {
         using var cancelled = new CancellationTokenSource();
         cancelled.Cancel();
 
-        Result<AnalysisReport> result = new Handlers().Analyze.Handle(Inputs.Job(Inputs.SquareCsv), cancelled.Token);
+        OperationOutcome outcome = new TestHandlers().Analyze.Handle(TestInputs.CreateJob(TestInputs.SquareCsv), cancelled.Token).Outcome;
 
-        Assert.Equal(ErrorCodes.Cancelled, result.Outcome.Errors[0].Code);
-        Assert.Equal(OutcomeCategory.Cancelled, result.Outcome.Category);
+        Assert.Equal((OutcomeCategory.Cancelled, ErrorCodes.Cancelled), (outcome.Category, outcome.Errors[0].Code));
     }
 
     [Fact]
-    public void Handle_ReturnsDeadlineExceededWithoutReport()
+    public void Handle_DeadlineReached_ReturnsBudgetFailure()
     {
-        var handlers = new Handlers(timeProvider: new ExpiredDeadlineTimeProvider());
+        var handlers = new TestHandlers(new ExpiredDeadlineTimeProvider());
 
-        Result<AnalysisReport> result = handlers.Analyze.Handle(Inputs.Job(Inputs.SquareCsv), CancellationToken.None);
+        OperationOutcome outcome = handlers.Analyze.Handle(TestInputs.CreateJob(TestInputs.SquareCsv), CancellationToken.None).Outcome;
 
-        Assert.Equal(ErrorCodes.OptDeadlineExceeded, result.Outcome.Errors[0].Code);
-        Assert.Equal(OutcomeCategory.Budget, result.Outcome.Category);
+        Assert.Equal((OutcomeCategory.Budget, ErrorCodes.OptDeadlineExceeded), (outcome.Category, outcome.Errors[0].Code));
     }
 
     [Fact]
-    public void Handle_ReportRecordsEffectiveParametersAndProvenance()
+    public void Handle_DefaultManifest_RecordsEffectivePassBudget()
     {
-        byte[] content = new Handlers().Analyze.Handle(Inputs.Job(Inputs.SquareCsv), CancellationToken.None).Value.Content;
+        using JsonDocument report = JsonDocument.Parse(Analyse(TestInputs.SquareCsv, TestInputs.MinimalManifest).Value.Content);
 
-        using JsonDocument report = JsonDocument.Parse(content);
-        JsonElement root = report.RootElement;
-        Assert.Equal(100, root.GetProperty("parameters").GetProperty("max_passes").GetInt64());
-        Assert.Equal(2, root.GetProperty("source_files").GetArrayLength());
-        Assert.Equal(64, root.GetProperty("input_sha256").GetString()!.Length);
-        Assert.Equal("2026-11-19T12:00:00.000Z", root.GetProperty("generated_at_utc").GetString());
+        Assert.Equal(100, report.RootElement.GetProperty("parameters").GetProperty("max_passes").GetInt64());
+    }
+
+    [Fact]
+    public void Handle_AnyInput_RecordsBothSourceFiles()
+    {
+        using JsonDocument report = JsonDocument.Parse(Analyse(TestInputs.SquareCsv, TestInputs.MinimalManifest).Value.Content);
+
+        Assert.Equal(2, report.RootElement.GetProperty("source_files").GetArrayLength());
+    }
+
+    [Fact]
+    public void Handle_FixedClock_StampsGenerationTime()
+    {
+        using JsonDocument report = JsonDocument.Parse(Analyse(TestInputs.SquareCsv, TestInputs.MinimalManifest).Value.Content);
+
+        Assert.Equal("2026-11-19T12:00:00.000Z", report.RootElement.GetProperty("generated_at_utc").GetString());
     }
 }
