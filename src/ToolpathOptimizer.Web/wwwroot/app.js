@@ -2,6 +2,16 @@
 
 // Display-only client: every metric shown comes from the server report; nothing here is authoritative.
 (() => {
+    const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
+    const PLOT_WIDTH = 640;
+    const PLOT_HEIGHT = 420;
+    const PLOT_MARGIN = 30;
+    const POINT_RADIUS = 4;
+    const LABEL_OFFSET = 5;
+    const START_MARKER_SIZE = 10;
+    const END_MARKER_RADIUS = 7;
+    const DISPLAY_DECIMALS = 3;
+
     const SAMPLE_CSV = [
         "point_id,x_mm,y_mm,sequence,operation_group",
         "P01,0,0,1,", "P02,200,90,2,", "P03,40,30,3,", "P04,160,0,4,",
@@ -25,185 +35,265 @@
         algorithm: { name: "nearest-neighbor-2opt", seed: 0, max_passes: 50 }
     });
 
-    const $ = (id) => document.getElementById(id);
     const state = { inputId: null, run: null, report: null };
 
-    function headers(extra) {
-        return Object.assign({
-            "X-Dev-Tenant": $("tenant").value.trim(),
-            "X-Dev-User": $("user").value.trim(),
-            "X-Dev-Role": $("role").value
-        }, extra || {});
+    function getElement(id) {
+        return document.getElementById(id);
     }
 
-    async function api(method, path, body, extraHeaders) {
-        const init = { method, headers: headers(extraHeaders) };
+    function buildIdentityHeaders(extraHeaders) {
+        return Object.assign({
+            "X-Dev-Tenant": getElement("tenant").value.trim(),
+            "X-Dev-User": getElement("user").value.trim(),
+            "X-Dev-Role": getElement("role").value
+        }, extraHeaders || {});
+    }
+
+    async function sendRequest(method, path, body, extraHeaders) {
+        const init = { method, headers: buildIdentityHeaders(extraHeaders) };
         if (body instanceof FormData) {
             init.body = body;
         } else if (body !== undefined) {
             init.headers["Content-Type"] = "application/json";
             init.body = JSON.stringify(body);
         }
+
         const response = await fetch(path, init);
         if (!response.ok) {
             let problem = { title: response.statusText, detail: "", code: String(response.status) };
-            try { problem = await response.json(); } catch { /* non-JSON error */ }
+            try { problem = await response.json(); } catch { /* non-JSON error body */ }
             throw problem;
         }
+
         return response;
     }
 
     function showError(problem) {
-        const box = $("error");
-        box.hidden = false;
-        box.textContent = `${problem.code || problem.status}: ${problem.detail || problem.title}`;
+        const errorBox = getElement("error");
+        errorBox.hidden = false;
+        errorBox.textContent = `${problem.code || problem.status}: ${problem.detail || problem.title}`;
     }
 
     function clearError() {
-        $("error").hidden = true;
-        $("error").textContent = "";
+        const errorBox = getElement("error");
+        errorBox.hidden = true;
+        errorBox.textContent = "";
     }
 
-    async function guarded(action) {
+    async function runWithErrorDisplay(action) {
         clearError();
-        try { await action(); } catch (problem) { showError(problem); }
+        try {
+            await action();
+        } catch (problem) {
+            showError(problem);
+        }
     }
 
-    async function refreshProjects(selectId) {
-        const projects = await (await api("GET", "/api/v1/projects")).json();
-        const select = $("project");
-        select.replaceChildren(...projects.map((p) => {
+    async function refreshProjects(projectIdToSelect) {
+        const projects = await (await sendRequest("GET", "/api/v1/projects")).json();
+        const select = getElement("project");
+        select.replaceChildren(...projects.map((project) => {
             const option = document.createElement("option");
-            option.value = p.id;
-            option.textContent = p.name;
+            option.value = project.id;
+            option.textContent = project.name;
             return option;
         }));
-        if (selectId) { select.value = selectId; }
+        if (projectIdToSelect) {
+            select.value = projectIdToSelect;
+        }
     }
 
     async function createProject() {
-        const project = await (await api("POST", "/api/v1/projects", { name: $("project-name").value })).json();
+        const project = await (await sendRequest("POST", "/api/v1/projects", { name: getElement("project-name").value })).json();
         await refreshProjects(project.id);
     }
 
-    async function upload(pointsBlob, manifestBlob) {
-        const projectId = $("project").value;
-        if (!projectId) { throw { code: "NO_PROJECT", detail: "Create or select a project first." }; }
+    async function uploadInput(pointsBlob, manifestBlob) {
+        const projectId = getElement("project").value;
+        if (!projectId) {
+            throw { code: "NO_PROJECT", detail: "Create or select a project first." };
+        }
+
         const form = new FormData();
         form.append("points", pointsBlob, "points.csv");
         form.append("manifest", manifestBlob, "job.json");
-        const input = await (await api("POST", `/api/v1/projects/${projectId}/inputs`, form)).json();
+        const input = await (await sendRequest("POST", `/api/v1/projects/${projectId}/inputs`, form)).json();
         state.inputId = input.id;
-        $("input-status").textContent = `Input accepted: ${input.point_count} points, sha256 ${input.input_sha256.slice(0, 16)}…`;
-        $("run").disabled = false;
+        getElement("input-status").textContent = `Input accepted: ${input.point_count} points, sha256 ${input.input_sha256.slice(0, 16)}…`;
+        getElement("run").disabled = false;
     }
 
-    async function uploadSelected() {
-        const points = $("points-file").files[0];
-        const manifest = $("manifest-file").files[0];
-        if (!points || !manifest) { throw { code: "NO_FILES", detail: "Choose both a points CSV and a manifest JSON." }; }
-        await upload(points, manifest);
+    async function uploadSelectedFiles() {
+        const pointsFile = getElement("points-file").files[0];
+        const manifestFile = getElement("manifest-file").files[0];
+        if (!pointsFile || !manifestFile) {
+            throw { code: "NO_FILES", detail: "Choose both a points CSV and a manifest JSON." };
+        }
+
+        await uploadInput(pointsFile, manifestFile);
+    }
+
+    function uploadSample() {
+        return uploadInput(new Blob([SAMPLE_CSV], { type: "text/csv" }), new Blob([SAMPLE_MANIFEST], { type: "application/json" }));
     }
 
     async function runAnalysis() {
-        const projectId = $("project").value;
-        $("run-status").textContent = "Running…";
-        const run = await (await api("POST", `/api/v1/projects/${projectId}/analyses`, { input_id: state.inputId },
+        const projectId = getElement("project").value;
+        getElement("run-status").textContent = "Running…";
+        const run = await (await sendRequest("POST", `/api/v1/projects/${projectId}/analyses`, { input_id: state.inputId },
             { "Idempotency-Key": crypto.randomUUID() })).json();
         state.run = run;
-        state.report = await (await api("GET", run.report_url)).json();
-        $("run-status").textContent = `Run ${run.id} ${run.status}.`;
-        render(state.report);
+        state.report = await (await sendRequest("GET", run.report_url)).json();
+        getElement("run-status").textContent = `Run ${run.id} ${run.status}.`;
+        renderReport(state.report);
     }
 
-    function cell(row, text, header) {
-        const element = document.createElement(header ? "th" : "td");
-        element.textContent = text;
-        row.appendChild(element);
+    function appendCell(row, text, tagName) {
+        const cell = document.createElement(tagName);
+        cell.textContent = text;
+        row.appendChild(cell);
     }
 
-    function fmt(value) {
-        return value === null || value === undefined ? "—" : Number(value).toFixed(3);
+    function appendHeaderCell(row, text) {
+        appendCell(row, text, "th");
     }
 
-    function render(report) {
-        $("results").hidden = false;
-        const summary = $("summary").tBodies[0];
-        summary.replaceChildren();
+    function appendDataCell(row, text) {
+        appendCell(row, text, "td");
+    }
+
+    function formatMillimetres(value) {
+        return value === null || value === undefined ? "—" : Number(value).toFixed(DISPLAY_DECIMALS);
+    }
+
+    function selectedOrder(report) {
+        return report.selected_route === "candidate" ? report.candidate_order : report.baseline_order;
+    }
+
+    function renderReport(report) {
+        getElement("results").hidden = false;
+        const pointsById = new Map(report.canonical_job.points.map((point) => [point.point_id, point]));
+        renderSummaryTable(report);
+        renderOrderTable(selectedOrder(report), pointsById);
+        drawRoutePlot(report, pointsById);
+    }
+
+    function renderSummaryTable(report) {
+        const body = getElement("summary").tBodies[0];
+        body.replaceChildren();
         const rows = [
             ["Selected route", `${report.selected_route} (${report.selection_reason})`],
-            ["Baseline distance (mm)", fmt(report.baseline_distance_mm)],
-            ["Candidate distance (mm)", fmt(report.candidate_distance_mm)],
-            ["Delta (mm)", fmt(report.delta_distance_mm)],
-            ["Delta (%)", fmt(report.delta_percent)],
+            ["Baseline distance (mm)", formatMillimetres(report.baseline_distance_mm)],
+            ["Candidate distance (mm)", formatMillimetres(report.candidate_distance_mm)],
+            ["Delta (mm)", formatMillimetres(report.delta_distance_mm)],
+            ["Delta (%)", formatMillimetres(report.delta_percent)],
             ["Baseline feasible", String(report.constraint_check.baseline.feasible)],
             ["Candidate feasible", String(report.constraint_check.candidate.feasible)],
             ["Search", `${report.search.termination}, ${report.search.passes} passes, ${report.search.accepted_moves} accepted moves`],
-            ["Warnings", report.warnings.map((w) => w.code).join(", ") || "none"],
+            ["Warnings", report.warnings.map((warning) => warning.code).join(", ") || "none"],
             ["Algorithm", `${report.algorithm_name} ${report.algorithm_version}`],
             ["Input SHA-256", report.input_sha256]
         ];
         for (const [label, value] of rows) {
-            const row = summary.insertRow();
-            cell(row, label, true);
-            cell(row, value, false);
+            const row = body.insertRow();
+            appendHeaderCell(row, label);
+            appendDataCell(row, value);
         }
-
-        const points = new Map(report.canonical_job.points.map((p) => [p.point_id, p]));
-        const selected = report.selected_route === "candidate" ? report.candidate_order : report.baseline_order;
-        const order = $("order").tBodies[0];
-        order.replaceChildren();
-        selected.forEach((id, index) => {
-            const p = points.get(id);
-            const row = order.insertRow();
-            [String(index + 1), id, fmt(p.x_mm), fmt(p.y_mm), p.operation_group || "—"].forEach((t) => cell(row, t, false));
-        });
-
-        drawPlot(report, points, selected);
     }
 
-    function drawPlot(report, points, selected) {
-        const NS = "http://www.w3.org/2000/svg";
-        const svg = $("plot");
-        const title = svg.querySelector("title");
-        svg.replaceChildren(title);
+    function renderOrderTable(orderedIds, pointsById) {
+        const body = getElement("order").tBodies[0];
+        body.replaceChildren();
+        orderedIds.forEach((pointId, index) => {
+            const point = pointsById.get(pointId);
+            const row = body.insertRow();
+            [String(index + 1), pointId, formatMillimetres(point.x_mm), formatMillimetres(point.y_mm), point.operation_group || "—"]
+                .forEach((text) => appendDataCell(row, text));
+        });
+    }
+
+    function createPlotProjection(positions) {
+        const xs = positions.map((position) => position.x_mm);
+        const ys = positions.map((position) => position.y_mm);
+        const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
+        const scale = Math.min(
+            (PLOT_WIDTH - 2 * PLOT_MARGIN) / Math.max(maxX - minX, Number.EPSILON),
+            (PLOT_HEIGHT - 2 * PLOT_MARGIN) / Math.max(maxY - minY, Number.EPSILON));
+        return {
+            toScreenX: (xMm) => PLOT_MARGIN + (xMm - minX) * scale,
+            toScreenY: (yMm) => PLOT_HEIGHT - PLOT_MARGIN - (yMm - minY) * scale
+        };
+    }
+
+    function appendSvgElement(svg, name, attributes) {
+        const svgElement = document.createElementNS(SVG_NAMESPACE, name);
+        for (const [attributeName, attributeValue] of Object.entries(attributes)) {
+            svgElement.setAttribute(attributeName, String(attributeValue));
+        }
+
+        svg.appendChild(svgElement);
+        return svgElement;
+    }
+
+    function drawRoutePlot(report, pointsById) {
+        const svg = getElement("plot");
+        svg.replaceChildren(svg.querySelector("title"));
         const job = report.canonical_job;
         const start = { x_mm: job.start_x_mm, y_mm: job.start_y_mm };
         const end = job.end_x_mm === null ? null : { x_mm: job.end_x_mm, y_mm: job.end_y_mm };
-        const all = [...points.values(), start, ...(end ? [end] : [])];
-        const xs = all.map((p) => p.x_mm), ys = all.map((p) => p.y_mm);
-        const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
-        const width = 640, height = 420, margin = 30;
-        const scale = Math.min((width - 2 * margin) / Math.max(maxX - minX, 1e-9), (height - 2 * margin) / Math.max(maxY - minY, 1e-9));
-        const sx = (x) => margin + (x - minX) * scale;
-        const sy = (y) => height - margin - (y - minY) * scale;
+        const projection = createPlotProjection([...pointsById.values(), start, ...(end ? [end] : [])]);
 
-        const element = (name, attrs) => {
-            const e = document.createElementNS(NS, name);
-            for (const [k, v] of Object.entries(attrs)) { e.setAttribute(k, String(v)); }
-            svg.appendChild(e);
-            return e;
-        };
-        const path = (ids, attrs) => {
-            const coords = [start, ...ids.map((id) => points.get(id)), ...(end ? [end] : [])];
-            element("polyline", Object.assign({ points: coords.map((p) => `${sx(p.x_mm)},${sy(p.y_mm)}`).join(" "), fill: "none" }, attrs));
-        };
-
-        path(report.baseline_order, { stroke: "#9aa0a6", "stroke-width": 1, "stroke-dasharray": "4 4" });
-        path(selected, { stroke: "#464feb", "stroke-width": 2 });
-        for (const p of points.values()) {
-            element("circle", { cx: sx(p.x_mm), cy: sy(p.y_mm), r: 4, fill: p.operation_group ? "#c27c0e" : "#1f2328" });
-            const label = element("text", { x: sx(p.x_mm) + 5, y: sy(p.y_mm) - 5, "font-size": 10, fill: "#57606a" });
-            label.textContent = p.point_id;
-        }
-        element("rect", { x: sx(start.x_mm) - 5, y: sy(start.y_mm) - 5, width: 10, height: 10, fill: "#1a7f37" });
+        drawRoute(svg, projection, [start, ...report.baseline_order.map((id) => pointsById.get(id)), ...(end ? [end] : [])],
+            { stroke: "#9aa0a6", "stroke-width": 1, "stroke-dasharray": "4 4" });
+        drawRoute(svg, projection, [start, ...selectedOrder(report).map((id) => pointsById.get(id)), ...(end ? [end] : [])],
+            { stroke: "#464feb", "stroke-width": 2 });
+        drawPoints(svg, projection, pointsById);
+        drawStartMarker(svg, projection, start);
         if (end) {
-            element("polygon", { points: `${sx(end.x_mm)},${sy(end.y_mm) - 7} ${sx(end.x_mm) + 7},${sy(end.y_mm)} ${sx(end.x_mm)},${sy(end.y_mm) + 7} ${sx(end.x_mm) - 7},${sy(end.y_mm)}`, fill: "none", stroke: "#cf222e", "stroke-width": 2 });
+            drawEndMarker(svg, projection, end);
         }
     }
 
-    async function download(format) {
-        const response = await api("GET", `${state.run.report_url}?format=${format}`);
+    function drawRoute(svg, projection, positions, strokeAttributes) {
+        const coordinates = positions.map((position) => `${projection.toScreenX(position.x_mm)},${projection.toScreenY(position.y_mm)}`).join(" ");
+        appendSvgElement(svg, "polyline", Object.assign({ points: coordinates, fill: "none" }, strokeAttributes));
+    }
+
+    function drawPoints(svg, projection, pointsById) {
+        for (const point of pointsById.values()) {
+            const x = projection.toScreenX(point.x_mm);
+            const y = projection.toScreenY(point.y_mm);
+            appendSvgElement(svg, "circle", { cx: x, cy: y, r: POINT_RADIUS, fill: point.operation_group ? "#c27c0e" : "#1f2328" });
+            const label = appendSvgElement(svg, "text", { x: x + LABEL_OFFSET, y: y - LABEL_OFFSET, "font-size": 10, fill: "#57606a" });
+            label.textContent = point.point_id;
+        }
+    }
+
+    function drawStartMarker(svg, projection, start) {
+        const half = START_MARKER_SIZE / 2;
+        appendSvgElement(svg, "rect", {
+            x: projection.toScreenX(start.x_mm) - half,
+            y: projection.toScreenY(start.y_mm) - half,
+            width: START_MARKER_SIZE,
+            height: START_MARKER_SIZE,
+            fill: "#1a7f37"
+        });
+    }
+
+    function drawEndMarker(svg, projection, end) {
+        const x = projection.toScreenX(end.x_mm);
+        const y = projection.toScreenY(end.y_mm);
+        const radius = END_MARKER_RADIUS;
+        appendSvgElement(svg, "polygon", {
+            points: `${x},${y - radius} ${x + radius},${y} ${x},${y + radius} ${x - radius},${y}`,
+            fill: "none",
+            stroke: "#cf222e",
+            "stroke-width": 2
+        });
+    }
+
+    async function downloadReport(format) {
+        const response = await sendRequest("GET", `${state.run.report_url}?format=${format}`);
         const url = URL.createObjectURL(await response.blob());
         const link = document.createElement("a");
         link.href = url;
@@ -212,15 +302,18 @@
         URL.revokeObjectURL(url);
     }
 
+    function bindButton(id, action) {
+        getElement(id).addEventListener("click", () => runWithErrorDisplay(action));
+    }
+
     document.addEventListener("DOMContentLoaded", () => {
-        $("create-project").addEventListener("click", () => guarded(createProject));
-        $("refresh-projects").addEventListener("click", () => guarded(() => refreshProjects()));
-        $("upload").addEventListener("click", () => guarded(uploadSelected));
-        $("upload-sample").addEventListener("click", () => guarded(() =>
-            upload(new Blob([SAMPLE_CSV], { type: "text/csv" }), new Blob([SAMPLE_MANIFEST], { type: "application/json" }))));
-        $("run").addEventListener("click", () => guarded(runAnalysis));
-        $("download-json").addEventListener("click", () => guarded(() => download("json")));
-        $("download-csv").addEventListener("click", () => guarded(() => download("csv")));
-        guarded(() => refreshProjects());
+        bindButton("create-project", createProject);
+        bindButton("refresh-projects", () => refreshProjects());
+        bindButton("upload", uploadSelectedFiles);
+        bindButton("upload-sample", uploadSample);
+        bindButton("run", runAnalysis);
+        bindButton("download-json", () => downloadReport("json"));
+        bindButton("download-csv", () => downloadReport("csv"));
+        runWithErrorDisplay(() => refreshProjects());
     });
 })();

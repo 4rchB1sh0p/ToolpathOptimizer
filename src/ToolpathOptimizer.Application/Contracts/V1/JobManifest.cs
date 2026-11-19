@@ -1,46 +1,23 @@
 namespace ToolpathOptimizer.Application.Contracts.V1;
 
 /// <summary>
-/// A precedence constraint as written in the manifest.
-/// </summary>
-public sealed class PrecedenceEntry
-{
-    /// <summary>Creates an entry.</summary>
-    /// <param name="before">Point visited first.</param>
-    /// <param name="after">Point visited later.</param>
-    public PrecedenceEntry(string before, string after)
-    {
-        Before = before;
-        After = after;
-    }
-
-    /// <summary>Gets the point visited first.</summary>
-    public string Before { get; }
-
-    /// <summary>Gets the point visited later.</summary>
-    public string After { get; }
-}
-
-/// <summary>
-/// A validated v1 job manifest with effective algorithm parameters (defaults applied).
+/// A validated v1 job manifest in millimetres, with effective algorithm parameters.
 /// </summary>
 public sealed class JobManifest
 {
     /// <summary>Creates a manifest.</summary>
-    /// <param name="jobId">Job identifier; empty when absent.</param>
-    /// <param name="startXMm">Start X in millimetres.</param>
-    /// <param name="startYMm">Start Y in millimetres.</param>
-    /// <param name="endXMm">Optional end X in millimetres.</param>
-    /// <param name="endYMm">Optional end Y in millimetres.</param>
+    /// <param name="jobId">Optional job identifier; empty when the manifest has none.</param>
+    /// <param name="startXMm">Fixed start X in millimetres.</param>
+    /// <param name="startYMm">Fixed start Y in millimetres.</param>
+    /// <param name="end">Optional fixed end position in millimetres; absent when the path is open-ended.</param>
     /// <param name="precedence">Precedence entries in input order.</param>
-    /// <param name="lockedGroups">Locked group names in input order.</param>
+    /// <param name="lockedGroups">Locked operation group names in input order.</param>
     /// <param name="parameters">Effective algorithm parameters.</param>
     public JobManifest(
         string jobId,
         double startXMm,
         double startYMm,
-        double? endXMm,
-        double? endYMm,
+        (double XMm, double YMm)? end,
         IReadOnlyList<PrecedenceEntry> precedence,
         IReadOnlyList<string> lockedGroups,
         AlgorithmParameters parameters)
@@ -48,65 +25,34 @@ public sealed class JobManifest
         JobId = jobId;
         StartXMm = startXMm;
         StartYMm = startYMm;
-        EndXMm = endXMm;
-        EndYMm = endYMm;
+        EndXMm = end?.XMm;
+        EndYMm = end?.YMm;
         Precedence = precedence.ToArray();
         LockedGroups = lockedGroups.ToArray();
         Parameters = parameters;
     }
 
-    /// <summary>Gets the job identifier; empty when absent.</summary>
+    /// <summary>Gets the optional job identifier; empty when the manifest has none.</summary>
     public string JobId { get; }
 
-    /// <summary>Gets the start X in millimetres.</summary>
+    /// <summary>Gets the fixed start X in millimetres.</summary>
     public double StartXMm { get; }
 
-    /// <summary>Gets the start Y in millimetres.</summary>
+    /// <summary>Gets the fixed start Y in millimetres.</summary>
     public double StartYMm { get; }
 
-    /// <summary>Gets the optional end X in millimetres.</summary>
+    /// <summary>Gets the optional fixed end X in millimetres (absent for open-ended paths).</summary>
     public double? EndXMm { get; }
 
-    /// <summary>Gets the optional end Y in millimetres.</summary>
+    /// <summary>Gets the optional fixed end Y in millimetres (absent for open-ended paths).</summary>
     public double? EndYMm { get; }
 
-    /// <summary>Gets the precedence entries.</summary>
+    /// <summary>Gets the precedence entries in input order.</summary>
     public IReadOnlyList<PrecedenceEntry> Precedence { get; }
 
-    /// <summary>Gets the locked group names.</summary>
+    /// <summary>Gets the locked operation group names in input order.</summary>
     public IReadOnlyList<string> LockedGroups { get; }
 
     /// <summary>Gets the effective algorithm parameters.</summary>
     public AlgorithmParameters Parameters { get; }
-}
-
-/// <summary>
-/// Effective algorithm parameters recorded in the report (ADR-0008).
-/// </summary>
-public sealed class AlgorithmParameters
-{
-    /// <summary>Creates parameters.</summary>
-    /// <param name="seed">Reserved seed (always 0).</param>
-    /// <param name="maxPasses">Pass budget.</param>
-    /// <param name="maxMoveEvaluations">Move-evaluation budget.</param>
-    /// <param name="minImprovementMm">Minimum improvement in millimetres.</param>
-    public AlgorithmParameters(long seed, long maxPasses, long maxMoveEvaluations, double minImprovementMm)
-    {
-        Seed = seed;
-        MaxPasses = maxPasses;
-        MaxMoveEvaluations = maxMoveEvaluations;
-        MinImprovementMm = minImprovementMm;
-    }
-
-    /// <summary>Gets the reserved seed.</summary>
-    public long Seed { get; }
-
-    /// <summary>Gets the pass budget.</summary>
-    public long MaxPasses { get; }
-
-    /// <summary>Gets the move-evaluation budget.</summary>
-    public long MaxMoveEvaluations { get; }
-
-    /// <summary>Gets the minimum improvement in millimetres.</summary>
-    public double MinImprovementMm { get; }
 }

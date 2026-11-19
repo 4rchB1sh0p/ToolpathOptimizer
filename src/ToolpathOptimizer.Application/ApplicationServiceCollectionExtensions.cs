@@ -28,6 +28,10 @@ public static class ApplicationServiceCollectionExtensions
         services.TryAddSingleton<ValidateJobHandler>();
         services.TryAddSingleton<AnalyzeJobHandler>();
         services.TryAddScoped<ProjectAccess>();
+        services.TryAddScoped<ProjectAuditor>();
+        services.TryAddScoped<ProjectArtifacts>();
+        services.TryAddScoped<InputUploadService>();
+        services.TryAddScoped<AnalysisRunService>();
         services.TryAddScoped<ProjectCommandService>();
         services.TryAddScoped<ProjectQueryService>();
         return services;

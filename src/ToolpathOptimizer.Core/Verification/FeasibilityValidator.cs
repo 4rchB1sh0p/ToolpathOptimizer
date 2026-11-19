@@ -13,7 +13,7 @@ public static class FeasibilityValidator
     public const int MaxReportedViolations = 100;
 
     /// <summary>Validates a route.</summary>
-    /// <param name="job">The job.</param>
+    /// <param name="job">The job whose constraints apply.</param>
     /// <param name="route">The route to check.</param>
     /// <returns>The feasibility report.</returns>
     public static FeasibilityReport Validate(DrillJob job, Route route)
@@ -21,66 +21,67 @@ public static class FeasibilityValidator
         ArgumentNullException.ThrowIfNull(job);
         ArgumentNullException.ThrowIfNull(route);
         var collector = new ViolationCollector();
-        Dictionary<PointId, int>? positions = CheckPermutation(job, route, collector);
-        if (positions is null)
+        CollectPermutationViolations(job, route, collector);
+        if (collector.Count > 0)
         {
-            return collector.ToReport(Length.Zero);
+            return collector.CreateReport(Length.Zero);
         }
 
-        CheckPrecedence(job, positions, collector);
-        CheckLockedGroups(job, positions, collector);
-        return collector.ToReport(RouteDistanceCalculator.Calculate(job, route.OrderedIds));
+        Dictionary<PointId, int> positions = MapRoutePositions(route);
+        CollectPrecedenceViolations(job, positions, collector);
+        CollectLockedGroupViolations(job, positions, collector);
+        return collector.CreateReport(RouteDistanceCalculator.Calculate(job, route.OrderedIds));
     }
 
-    private static Dictionary<PointId, int>? CheckPermutation(DrillJob job, Route route, ViolationCollector collector)
+    private static void CollectPermutationViolations(DrillJob job, Route route, ViolationCollector collector)
     {
-        var positions = new Dictionary<PointId, int>(route.OrderedIds.Count);
-        for (int k = 0; k < route.OrderedIds.Count; k++)
+        var visited = new HashSet<PointId>();
+        foreach (PointId id in route.OrderedIds)
         {
-            PointId id = route.OrderedIds[k];
             if (!job.TryGetIndex(id, out _))
             {
                 collector.Add(FeasibilityCodes.RouteUnknownPoint, $"Route contains unknown point '{id}'.");
             }
-            else if (!positions.TryAdd(id, k))
+            else if (!visited.Add(id))
             {
                 collector.Add(FeasibilityCodes.RouteDuplicatePoint, $"Point '{id}' is visited more than once.");
             }
         }
 
-        foreach (DrillPoint point in job.Points)
+        foreach (DrillPoint point in job.Points.Where(p => !visited.Contains(p.Id)))
         {
-            if (!positions.ContainsKey(point.Id))
-            {
-                collector.Add(FeasibilityCodes.RouteMissingPoint, $"Point '{point.Id}' is not visited.");
-            }
+            collector.Add(FeasibilityCodes.RouteMissingPoint, $"Point '{point.Id}' is not visited.");
         }
-
-        return collector.Count == 0 ? positions : null;
     }
 
-    private static void CheckPrecedence(DrillJob job, Dictionary<PointId, int> positions, ViolationCollector collector)
+    private static Dictionary<PointId, int> MapRoutePositions(Route route)
+    {
+        var positions = new Dictionary<PointId, int>(route.OrderedIds.Count);
+        for (int i = 0; i < route.OrderedIds.Count; i++)
+        {
+            positions.Add(route.OrderedIds[i], i);
+        }
+
+        return positions;
+    }
+
+    private static void CollectPrecedenceViolations(DrillJob job, Dictionary<PointId, int> positions, ViolationCollector collector)
     {
         foreach (PrecedenceEdge edge in job.Constraints.Precedence)
         {
-            bool known = positions.TryGetValue(edge.Before, out int before) & positions.TryGetValue(edge.After, out int after);
-            if (!known || before >= after)
+            bool isBeforeVisited = positions.TryGetValue(edge.Before, out int before);
+            bool isAfterVisited = positions.TryGetValue(edge.After, out int after);
+            if (!isBeforeVisited || !isAfterVisited || before >= after)
             {
                 collector.Add(FeasibilityCodes.PrecedenceViolated, $"Point '{edge.Before}' must be visited before '{edge.After}'.");
             }
         }
     }
 
-    private static void CheckLockedGroups(DrillJob job, Dictionary<PointId, int> positions, ViolationCollector collector)
+    private static void CollectLockedGroupViolations(DrillJob job, Dictionary<PointId, int> positions, ViolationCollector collector)
     {
-        var checkedGroups = new HashSet<string>(StringComparer.Ordinal);
-        foreach (string group in job.Constraints.LockedGroups)
+        foreach (string group in job.Constraints.LockedGroups.Distinct(StringComparer.Ordinal))
         {
-            if (!checkedGroups.Add(group))
-            {
-                continue;
-            }
-
             int[] routePositions = job.Points
                 .Where(p => string.Equals(p.OperationGroup, group, StringComparison.Ordinal))
                 .Select(p => positions[p.Id])
@@ -95,23 +96,39 @@ public static class FeasibilityValidator
                 collector.Add(FeasibilityCodes.LockedGroupNotContiguous, $"Locked group '{group}' is not visited contiguously.");
             }
 
-            for (int k = 1; k < routePositions.Length; k++)
+            if (!IsStrictlyIncreasing(routePositions))
             {
-                if (routePositions[k] <= routePositions[k - 1])
-                {
-                    collector.Add(FeasibilityCodes.LockedGroupOrderChanged, $"Locked group '{group}' is not visited in baseline order.");
-                    break;
-                }
+                collector.Add(FeasibilityCodes.LockedGroupOrderChanged, $"Locked group '{group}' is not visited in baseline order.");
             }
         }
     }
 
+    private static bool IsStrictlyIncreasing(int[] values)
+    {
+        for (int i = 1; i < values.Length; i++)
+        {
+            if (values[i] <= values[i - 1])
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Counts every violation but keeps only the first <see cref="MaxReportedViolations"/> so reports stay bounded.
+    /// </summary>
     private sealed class ViolationCollector
     {
         private readonly List<FeasibilityViolation> _violations = [];
 
+        /// <summary>Gets the total number of violations added.</summary>
         public int Count { get; private set; }
 
+        /// <summary>Records a violation.</summary>
+        /// <param name="code">Stable violation code.</param>
+        /// <param name="message">Explanation.</param>
         public void Add(string code, string message)
         {
             Count++;
@@ -121,6 +138,9 @@ public static class FeasibilityValidator
             }
         }
 
-        public FeasibilityReport ToReport(Length distance) => new(_violations, Count, distance);
+        /// <summary>Creates the report.</summary>
+        /// <param name="distance">Authoritative distance.</param>
+        /// <returns>The report.</returns>
+        public FeasibilityReport CreateReport(Length distance) => new(_violations, Count, distance);
     }
 }

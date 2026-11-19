@@ -8,6 +8,9 @@ namespace ToolpathOptimizer.Application.Contracts.V1;
 /// </summary>
 internal static class InvariantNumber
 {
+    /// <summary>Determines whether a token spells NaN or infinity (rejected as non-finite rather than malformed).</summary>
+    /// <param name="token">Raw field text.</param>
+    /// <returns><c>true</c> for NaN/Inf/Infinity/∞ with an optional sign.</returns>
     public static bool IsNonFiniteLiteral(string token)
     {
         string body = token.TrimStart('+', '-');
@@ -17,6 +20,10 @@ internal static class InvariantNumber
             || body == "∞";
     }
 
+    /// <summary>Parses a token that has strict decimal syntax; overflow yields an infinite value for the caller to reject.</summary>
+    /// <param name="token">Raw field text.</param>
+    /// <param name="value">Parsed value when the syntax is valid.</param>
+    /// <returns><c>true</c> when the token has valid decimal syntax.</returns>
     public static bool TryParse(string token, out double value)
     {
         value = 0;
@@ -29,6 +36,7 @@ internal static class InvariantNumber
         return true;
     }
 
+    /// <summary>Checks <c>[+-]?(digits[.digits]|.digits)([eE][+-]?digits)?</c> without regular expressions.</summary>
     private static bool HasDecimalSyntax(string token)
     {
         int i = 0;

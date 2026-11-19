@@ -5,62 +5,91 @@ using ToolpathOptimizer.Infrastructure.Files;
 
 namespace ToolpathOptimizer.Infrastructure.IntegrationTests.Files;
 
+/// <summary>Tests for <see cref="AtomicFileReportWriter"/> against the real file system.</summary>
 public sealed class AtomicFileReportWriterTests : IDisposable
 {
     private readonly TempDirectory _temp = new();
     private readonly AtomicFileReportWriter _writer = new();
 
+    /// <inheritdoc />
     public void Dispose() => _temp.Dispose();
 
-    [Fact]
-    public async Task WriteAsync_CreatesFileAndLeavesNoTemp()
-    {
-        OperationOutcome outcome = await _writer.WriteAsync(_temp.File("r.json"), Encoding.UTF8.GetBytes("{}"), ReportWriteMode.CreateNew, CancellationToken.None);
+    private Task<OperationOutcome> WriteAsync(string name, string content, ReportWriteMode mode) =>
+        _writer.WriteAsync(_temp.PathOf(name), Encoding.UTF8.GetBytes(content), mode, CancellationToken.None);
 
-        Assert.True(outcome.IsSuccess);
-        Assert.Equal("{}", await File.ReadAllTextAsync(_temp.File("r.json")));
+    [Fact]
+    public async Task WriteAsync_NewFile_WritesContent()
+    {
+        await WriteAsync("r.json", "{}", ReportWriteMode.CreateNew);
+
+        Assert.Equal("{}", await File.ReadAllTextAsync(_temp.PathOf("r.json")));
+    }
+
+    [Fact]
+    public async Task WriteAsync_NewFile_LeavesNoTempFile()
+    {
+        await WriteAsync("r.json", "{}", ReportWriteMode.CreateNew);
+
         Assert.Single(Directory.GetFiles(_temp.Path));
     }
 
     [Fact]
-    public async Task WriteAsync_RefusesExistingFileWithoutOverwrite()
+    public async Task WriteAsync_ExistingFileWithCreateNew_ReturnsOutputExists()
     {
-        await File.WriteAllTextAsync(_temp.File("r.json"), "old");
+        await File.WriteAllTextAsync(_temp.PathOf("r.json"), "old");
 
-        OperationOutcome outcome = await _writer.WriteAsync(_temp.File("r.json"), Encoding.UTF8.GetBytes("new"), ReportWriteMode.CreateNew, CancellationToken.None);
+        OperationOutcome outcome = await WriteAsync("r.json", "new", ReportWriteMode.CreateNew);
 
         Assert.Equal(ErrorCodes.IoOutputExists, outcome.Errors[0].Code);
-        Assert.Equal("old", await File.ReadAllTextAsync(_temp.File("r.json")));
     }
 
     [Fact]
-    public async Task WriteAsync_ReplacesExistingFileWithOverwrite()
+    public async Task WriteAsync_ExistingFileWithCreateNew_KeepsOldContent()
     {
-        await File.WriteAllTextAsync(_temp.File("r.json"), "old");
+        await File.WriteAllTextAsync(_temp.PathOf("r.json"), "old");
 
-        OperationOutcome outcome = await _writer.WriteAsync(_temp.File("r.json"), Encoding.UTF8.GetBytes("new"), ReportWriteMode.Overwrite, CancellationToken.None);
+        await WriteAsync("r.json", "new", ReportWriteMode.CreateNew);
 
-        Assert.True(outcome.IsSuccess);
-        Assert.Equal("new", await File.ReadAllTextAsync(_temp.File("r.json")));
+        Assert.Equal("old", await File.ReadAllTextAsync(_temp.PathOf("r.json")));
     }
 
     [Fact]
-    public async Task WriteAsync_FailsWhenDirectoryMissing()
+    public async Task WriteAsync_ExistingFileWithOverwrite_ReplacesContent()
     {
-        OperationOutcome outcome = await _writer.WriteAsync(_temp.File("missing/r.json"), Encoding.UTF8.GetBytes("{}"), ReportWriteMode.CreateNew, CancellationToken.None);
+        await File.WriteAllTextAsync(_temp.PathOf("r.json"), "old");
+
+        await WriteAsync("r.json", "new", ReportWriteMode.Overwrite);
+
+        Assert.Equal("new", await File.ReadAllTextAsync(_temp.PathOf("r.json")));
+    }
+
+    [Fact]
+    public async Task WriteAsync_MissingDirectory_ReturnsWriteFailed()
+    {
+        OperationOutcome outcome = await WriteAsync("missing/r.json", "{}", ReportWriteMode.CreateNew);
 
         Assert.Equal(ErrorCodes.IoWriteFailed, outcome.Errors[0].Code);
     }
 
     [Fact]
-    public async Task WriteAsync_CancelledLeavesNoPartialOrTempFile()
+    public async Task WriteAsync_CancelledToken_ReturnsCancelled()
     {
         using var cancelled = new CancellationTokenSource();
         cancelled.Cancel();
 
-        OperationOutcome outcome = await _writer.WriteAsync(_temp.File("r.json"), new byte[1024], ReportWriteMode.CreateNew, cancelled.Token);
+        OperationOutcome outcome = await _writer.WriteAsync(_temp.PathOf("r.json"), new byte[1024], ReportWriteMode.CreateNew, cancelled.Token);
 
         Assert.Equal(ErrorCodes.Cancelled, outcome.Errors[0].Code);
+    }
+
+    [Fact]
+    public async Task WriteAsync_CancelledToken_LeavesNoFiles()
+    {
+        using var cancelled = new CancellationTokenSource();
+        cancelled.Cancel();
+
+        await _writer.WriteAsync(_temp.PathOf("r.json"), new byte[1024], ReportWriteMode.CreateNew, cancelled.Token);
+
         Assert.Empty(Directory.GetFiles(_temp.Path));
     }
 }

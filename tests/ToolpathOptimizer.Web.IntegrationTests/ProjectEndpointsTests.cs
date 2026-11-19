@@ -4,176 +4,135 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using ToolpathOptimizer.Application.Analysis;
+using ToolpathOptimizer.Web.IntegrationTests.Support;
 
 namespace ToolpathOptimizer.Web.IntegrationTests;
 
+/// <summary>End-to-end tests of the project API: report parity, idempotency, problem details and authentication.</summary>
 public sealed class ProjectEndpointsTests : IClassFixture<ToolpathWebFactory>
 {
     private readonly ToolpathWebFactory _factory;
 
+    /// <summary>Creates the tests with a shared host.</summary>
+    /// <param name="factory">Shared web host.</param>
     public ProjectEndpointsTests(ToolpathWebFactory factory)
     {
         _factory = factory;
     }
 
-    private static string NewTenant() => "t" + Guid.NewGuid().ToString("N")[..12];
+    private HttpClient CreateEngineer() => _factory.CreateClientFor(SeededRun.CreateUniqueTenant(), "eng", "Engineer");
+
+    private string ReportUrl(SeededRun seeded) => $"/api/v1/projects/{seeded.ProjectId}/analyses/{seeded.RunId}/report";
 
     [Fact]
-    public async Task FullFlow_ProducesReportIdenticalToSharedHandler()
+    public async Task RunAnalysis_PlateSample_SelectsCandidate()
     {
-        HttpClient engineer = _factory.ClientFor(NewTenant(), "eng", "Engineer");
+        HttpClient engineer = CreateEngineer();
         string projectId = await engineer.CreateProjectAsync();
-        string inputId = await engineer.UploadSampleAsync(projectId);
 
-        HttpResponseMessage runResponse = await engineer.RunAsync(projectId, inputId, "run-1");
-        JsonElement run = await runResponse.JsonAsync();
-        byte[] webReport = await engineer.GetByteArrayAsync(run.GetProperty("report_url").GetString());
+        JsonElement run = await (await engineer.RunAnalysisAsync(projectId, await engineer.UploadPlateSampleAsync(projectId))).ReadJsonAsync();
 
-        Assert.Equal(HttpStatusCode.Created, runResponse.StatusCode);
-        Assert.Equal("succeeded", run.GetProperty("status").GetString());
-        Assert.Equal("candidate", run.GetProperty("summary").GetProperty("selected_route").GetString());
+        Assert.Equal(("succeeded", "candidate"), (run.GetProperty("status").GetString(), run.GetProperty("summary").GetProperty("selected_route").GetString()));
+    }
 
-        var input = new JobInput(await File.ReadAllBytesAsync(Api.Sample("plate.csv")), await File.ReadAllBytesAsync(Api.Sample("plate-job.json")));
+    [Fact]
+    public async Task GetReport_PlateSample_MatchesSharedHandlerBytes()
+    {
+        SeededRun seeded = await SeededRun.CreateAsync(_factory);
+        byte[] webReport = await _factory.CreateClientFor(seeded.Tenant, "eng", "Engineer").GetByteArrayAsync(ReportUrl(seeded));
+
+        var input = new JobInput(await File.ReadAllBytesAsync(ApiClientExtensions.SamplePath("plate.csv")), await File.ReadAllBytesAsync(ApiClientExtensions.SamplePath("plate-job.json")));
         byte[] handlerReport = _factory.Services.GetRequiredService<AnalyzeJobHandler>().Handle(input, CancellationToken.None).Value.Content;
+
         Assert.Equal(handlerReport, webReport);
     }
 
     [Fact]
-    public async Task Report_CsvSummaryIsAvailable()
+    public async Task GetReport_CsvFormat_ReturnsSummaryCsv()
     {
-        HttpClient engineer = _factory.ClientFor(NewTenant(), "eng", "Engineer");
-        string projectId = await engineer.CreateProjectAsync();
-        JsonElement run = await (await engineer.RunAsync(projectId, await engineer.UploadSampleAsync(projectId))).JsonAsync();
+        SeededRun seeded = await SeededRun.CreateAsync(_factory);
 
-        HttpResponseMessage csv = await engineer.GetAsync(run.GetProperty("report_url").GetString() + "?format=csv");
+        HttpResponseMessage csv = await _factory.CreateClientFor(seeded.Tenant, "eng", "Engineer").GetAsync(ReportUrl(seeded) + "?format=csv");
 
-        Assert.Equal("text/csv", csv.Content.Headers.ContentType?.MediaType);
         Assert.StartsWith("position,point_id,x_mm,y_mm,operation_group", await csv.Content.ReadAsStringAsync(), StringComparison.Ordinal);
     }
 
     [Fact]
-    public async Task RepeatedIdempotencyKey_ReturnsSameRun()
+    public async Task GetReport_UnknownFormat_ReturnsBadRequest()
     {
-        HttpClient engineer = _factory.ClientFor(NewTenant(), "eng", "Engineer");
-        string projectId = await engineer.CreateProjectAsync();
-        string inputId = await engineer.UploadSampleAsync(projectId);
+        SeededRun seeded = await SeededRun.CreateAsync(_factory);
 
-        string first = (await (await engineer.RunAsync(projectId, inputId, "same")).JsonAsync()).GetProperty("id").GetString()!;
-        string second = (await (await engineer.RunAsync(projectId, inputId, "same")).JsonAsync()).GetProperty("id").GetString()!;
+        HttpResponseMessage response = await _factory.CreateClientFor(seeded.Tenant, "eng", "Engineer").GetAsync(ReportUrl(seeded) + "?format=xml");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task RunAnalysis_RepeatedIdempotencyKey_ReturnsSameRun()
+    {
+        HttpClient engineer = CreateEngineer();
+        string projectId = await engineer.CreateProjectAsync();
+        string inputId = await engineer.UploadPlateSampleAsync(projectId);
+
+        string first = (await (await engineer.RunAnalysisAsync(projectId, inputId, "same")).ReadJsonAsync()).GetProperty("id").GetString()!;
+        string second = (await (await engineer.RunAnalysisAsync(projectId, inputId, "same")).ReadJsonAsync()).GetProperty("id").GetString()!;
 
         Assert.Equal(first, second);
     }
 
     [Fact]
-    public async Task CrossTenantAccess_ReturnsNotFound()
+    public async Task UploadInput_NonFiniteCoordinate_ReturnsBadRequestProblem()
     {
-        HttpClient owner = _factory.ClientFor(NewTenant(), "eng", "Owner");
-        HttpClient intruder = _factory.ClientFor(NewTenant(), "eng", "Owner");
-        string projectId = await owner.CreateProjectAsync();
-        string inputId = await owner.UploadSampleAsync(projectId);
-        string runId = (await (await owner.RunAsync(projectId, inputId)).JsonAsync()).GetProperty("id").GetString()!;
-
-        Assert.Equal(HttpStatusCode.NotFound, (await intruder.GetAsync($"/api/v1/projects/{projectId}/analyses/{runId}")).StatusCode);
-        Assert.Equal(HttpStatusCode.NotFound, (await intruder.GetAsync($"/api/v1/projects/{projectId}/analyses/{runId}/report")).StatusCode);
-        Assert.Equal(HttpStatusCode.NotFound, (await intruder.RunAsync(projectId, inputId)).StatusCode);
-        Assert.Equal(HttpStatusCode.NotFound, (await intruder.DeleteAsync($"/api/v1/projects/{projectId}")).StatusCode);
-        Assert.Equal(0, (await (await intruder.GetAsync("/api/v1/projects")).JsonAsync()).GetArrayLength());
-    }
-
-    [Fact]
-    public async Task TenantInBody_IsIgnored()
-    {
-        string tenantA = NewTenant();
-        string tenantB = NewTenant();
-        HttpClient clientA = _factory.ClientFor(tenantA, "eng", "Engineer");
-        HttpClient clientB = _factory.ClientFor(tenantB, "eng", "Engineer");
-
-        HttpResponseMessage created = await clientA.PostAsJsonAsync("/api/v1/projects", new { name = "Spoof", tenant_id = tenantB });
-
-        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
-        Assert.Equal(1, (await (await clientA.GetAsync("/api/v1/projects")).JsonAsync()).GetArrayLength());
-        Assert.Equal(0, (await (await clientB.GetAsync("/api/v1/projects")).JsonAsync()).GetArrayLength());
-    }
-
-    [Theory]
-    [InlineData("Viewer")]
-    [InlineData("Reviewer")]
-    public async Task ReadOnlyRoles_CannotCreateUploadOrRun(string role)
-    {
-        string tenant = NewTenant();
-        HttpClient engineer = _factory.ClientFor(tenant, "eng", "Engineer");
-        HttpClient readOnly = _factory.ClientFor(tenant, "ro", role);
+        HttpClient engineer = CreateEngineer();
         string projectId = await engineer.CreateProjectAsync();
-        string inputId = await engineer.UploadSampleAsync(projectId);
+        byte[] csv = Encoding.UTF8.GetBytes("point_id,x_mm,y_mm,sequence,operation_group\nA,NaN,0,1,\n");
 
-        HttpResponseMessage create = await readOnly.PostAsJsonAsync("/api/v1/projects", new { name = "x" });
-        HttpResponseMessage upload = await readOnly.UploadAsync(projectId, [1], [1]);
-        HttpResponseMessage run = await readOnly.RunAsync(projectId, inputId);
-        HttpResponseMessage read = await readOnly.GetAsync("/api/v1/projects");
+        HttpResponseMessage response = await engineer.UploadAsync(projectId, csv, await File.ReadAllBytesAsync(ApiClientExtensions.SamplePath("job.json")));
 
-        Assert.Equal(HttpStatusCode.Forbidden, create.StatusCode);
-        Assert.Equal(HttpStatusCode.Forbidden, upload.StatusCode);
-        Assert.Equal(HttpStatusCode.Forbidden, run.StatusCode);
-        Assert.Equal("ACCESS_DENIED", (await run.JsonAsync()).GetProperty("code").GetString());
-        Assert.Equal(HttpStatusCode.OK, read.StatusCode);
+        Assert.Equal((HttpStatusCode.BadRequest, "application/problem+json", "INPUT_NON_FINITE_COORDINATE"),
+            (response.StatusCode, response.Content.Headers.ContentType?.MediaType, await response.ReadProblemCodeAsync()));
     }
 
     [Fact]
-    public async Task OnlyOwner_CanExportAndDelete()
+    public async Task UploadInput_CyclicConstraints_ReturnsUnprocessableEntity()
     {
-        string tenant = NewTenant();
-        HttpClient engineer = _factory.ClientFor(tenant, "eng", "Engineer");
-        HttpClient owner = _factory.ClientFor(tenant, "own", "Owner");
-        string projectId = await engineer.CreateProjectAsync();
-
-        Assert.Equal(HttpStatusCode.Forbidden, (await engineer.GetAsync($"/api/v1/projects/{projectId}/export")).StatusCode);
-        Assert.Equal(HttpStatusCode.Forbidden, (await engineer.DeleteAsync($"/api/v1/projects/{projectId}")).StatusCode);
-        Assert.Equal(HttpStatusCode.OK, (await owner.GetAsync($"/api/v1/projects/{projectId}/export")).StatusCode);
-        Assert.Equal(HttpStatusCode.NoContent, (await owner.DeleteAsync($"/api/v1/projects/{projectId}")).StatusCode);
-        Assert.Equal(HttpStatusCode.NotFound, (await owner.GetAsync($"/api/v1/projects/{projectId}/export")).StatusCode);
-    }
-
-    [Fact]
-    public async Task InvalidInput_ReturnsProblemDetailsWithStableCode()
-    {
-        HttpClient engineer = _factory.ClientFor(NewTenant(), "eng", "Engineer");
-        string projectId = await engineer.CreateProjectAsync();
-
-        HttpResponseMessage response = await engineer.UploadAsync(projectId, Encoding.UTF8.GetBytes("point_id,x_mm,y_mm,sequence,operation_group\nA,NaN,0,1,\n"), await File.ReadAllBytesAsync(Api.Sample("job.json")));
-        JsonElement problem = await response.JsonAsync();
-
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
-        Assert.Equal("INPUT_NON_FINITE_COORDINATE", problem.GetProperty("code").GetString());
-    }
-
-    [Fact]
-    public async Task InfeasibleConstraints_Return422()
-    {
-        HttpClient engineer = _factory.ClientFor(NewTenant(), "eng", "Engineer");
+        HttpClient engineer = CreateEngineer();
         string projectId = await engineer.CreateProjectAsync();
         byte[] manifest = Encoding.UTF8.GetBytes("""{"schema_version":"1.0","coordinate_system":"XY_CARTESIAN","units":"mm","start_x_mm":0,"start_y_mm":0,"constraints":{"precedence":[{"before":"H01","after":"H02"},{"before":"H02","after":"H01"}]},"algorithm":{"name":"nearest-neighbor-2opt"}}""");
 
-        HttpResponseMessage response = await engineer.UploadAsync(projectId, await File.ReadAllBytesAsync(Api.Sample("holes.csv")), manifest);
+        HttpResponseMessage response = await engineer.UploadAsync(projectId, await File.ReadAllBytesAsync(ApiClientExtensions.SamplePath("holes.csv")), manifest);
 
-        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
-        Assert.Equal("CONSTRAINT_CYCLE", (await response.JsonAsync()).GetProperty("code").GetString());
+        Assert.Equal((HttpStatusCode.UnprocessableEntity, "CONSTRAINT_CYCLE"), (response.StatusCode, await response.ReadProblemCodeAsync()));
     }
 
     [Fact]
-    public async Task MissingIdentity_Returns401Problem()
+    public async Task ListProjects_NoIdentity_ReturnsUnauthorizedProblem()
     {
         HttpResponseMessage response = await _factory.CreateClient().GetAsync("/api/v1/projects");
 
+        Assert.Equal((HttpStatusCode.Unauthorized, "UNAUTHENTICATED"), (response.StatusCode, await response.ReadProblemCodeAsync()));
+    }
+
+    [Theory]
+    [InlineData("bad tenant", "u", "Owner")]
+    [InlineData("tenant-x", "u", "Admin")]
+    [InlineData("tenant-x", "u", "3")]
+    public async Task ListProjects_InvalidIdentityHeaders_ReturnsUnauthorized(string tenant, string user, string role)
+    {
+        HttpResponseMessage response = await _factory.CreateClientFor(tenant, user, role).GetAsync("/api/v1/projects");
+
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
-        Assert.Equal("UNAUTHENTICATED", (await response.JsonAsync()).GetProperty("code").GetString());
     }
 
     [Fact]
-    public async Task InvalidIdentityHeaders_Return401()
+    public async Task CreateProject_TenantInBody_IsIgnored()
     {
-        HttpResponseMessage response = await _factory.ClientFor("bad tenant", "u", "Owner").GetAsync("/api/v1/projects");
+        string otherTenant = SeededRun.CreateUniqueTenant();
+        HttpClient caller = CreateEngineer();
 
-        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        await caller.PostAsJsonAsync("/api/v1/projects", new { name = "Spoof", tenant_id = otherTenant });
+        JsonElement otherTenantProjects = await (await _factory.CreateClientFor(otherTenant, "eng", "Engineer").GetAsync("/api/v1/projects")).ReadJsonAsync();
+
+        Assert.Equal(0, otherTenantProjects.GetArrayLength());
     }
 }

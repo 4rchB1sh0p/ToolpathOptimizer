@@ -1,3 +1,4 @@
+using ToolpathOptimizer.Application.Outcomes;
 using ToolpathOptimizer.Application.Ports;
 using ToolpathOptimizer.Application.Projects;
 
@@ -11,8 +12,8 @@ public sealed class InMemoryProjectRepository : IProjectRepository
 {
     private readonly Lock _gate = new();
     private readonly Dictionary<(string Tenant, Guid Project), Project> _projects = [];
-    private readonly Dictionary<(string Tenant, Guid Project), List<InputArtifact>> _inputs = [];
-    private readonly Dictionary<(string Tenant, Guid Project), List<AnalysisRun>> _runs = [];
+    private readonly Dictionary<(string Tenant, Guid Project), List<InputArtifact>> _inputsByProject = [];
+    private readonly Dictionary<(string Tenant, Guid Project), List<AnalysisRun>> _runsByProject = [];
 
     /// <inheritdoc />
     public void AddProject(Project project)
@@ -25,11 +26,13 @@ public sealed class InMemoryProjectRepository : IProjectRepository
     }
 
     /// <inheritdoc />
-    public Project? FindProject(string tenantId, Guid projectId)
+    public Result<Project> FindProject(string tenantId, Guid projectId)
     {
         lock (_gate)
         {
-            return _projects.GetValueOrDefault((tenantId, projectId));
+            return _projects.TryGetValue((tenantId, projectId), out Project? project)
+                ? Result<Project>.Success(project)
+                : Result<Project>.NotFound("Project");
         }
     }
 
@@ -48,8 +51,8 @@ public sealed class InMemoryProjectRepository : IProjectRepository
         lock (_gate)
         {
             _projects.Remove((tenantId, projectId));
-            _inputs.Remove((tenantId, projectId));
-            _runs.Remove((tenantId, projectId));
+            _inputsByProject.Remove((tenantId, projectId));
+            _runsByProject.Remove((tenantId, projectId));
         }
     }
 
@@ -59,16 +62,17 @@ public sealed class InMemoryProjectRepository : IProjectRepository
         ArgumentNullException.ThrowIfNull(input);
         lock (_gate)
         {
-            ListFor(_inputs, input.TenantId, input.ProjectId).Add(input);
+            GetOrCreateList(_inputsByProject, input.TenantId, input.ProjectId).Add(input);
         }
     }
 
     /// <inheritdoc />
-    public InputArtifact? FindInput(string tenantId, Guid projectId, Guid inputId)
+    public Result<InputArtifact> FindInput(string tenantId, Guid projectId, Guid inputId)
     {
         lock (_gate)
         {
-            return _inputs.GetValueOrDefault((tenantId, projectId))?.FirstOrDefault(i => i.Id == inputId);
+            InputArtifact? input = ListOrEmpty(_inputsByProject, tenantId, projectId).FirstOrDefault(i => i.Id == inputId);
+            return input is null ? Result<InputArtifact>.NotFound("Input") : Result<InputArtifact>.Success(input);
         }
     }
 
@@ -77,7 +81,7 @@ public sealed class InMemoryProjectRepository : IProjectRepository
     {
         lock (_gate)
         {
-            return _inputs.GetValueOrDefault((tenantId, projectId))?.ToArray() ?? [];
+            return ListOrEmpty(_inputsByProject, tenantId, projectId).ToArray();
         }
     }
 
@@ -87,10 +91,8 @@ public sealed class InMemoryProjectRepository : IProjectRepository
         ArgumentNullException.ThrowIfNull(run);
         lock (_gate)
         {
-            List<AnalysisRun> runs = ListFor(_runs, run.TenantId, run.ProjectId);
-            AnalysisRun? existing = run.IdempotencyKey.Length == 0
-                ? null
-                : runs.FirstOrDefault(r => string.Equals(r.IdempotencyKey, run.IdempotencyKey, StringComparison.Ordinal));
+            List<AnalysisRun> runs = GetOrCreateList(_runsByProject, run.TenantId, run.ProjectId);
+            AnalysisRun? existing = run.IdempotencyKey.Length == 0 ? null : FindByKey(runs, run.IdempotencyKey);
             if (existing is not null)
             {
                 return existing;
@@ -102,21 +104,22 @@ public sealed class InMemoryProjectRepository : IProjectRepository
     }
 
     /// <inheritdoc />
-    public AnalysisRun? FindRunByIdempotencyKey(string tenantId, Guid projectId, string idempotencyKey)
+    public Result<AnalysisRun> FindRunByIdempotencyKey(string tenantId, Guid projectId, string idempotencyKey)
     {
         lock (_gate)
         {
-            return _runs.GetValueOrDefault((tenantId, projectId))?
-                .FirstOrDefault(r => r.IdempotencyKey.Length > 0 && string.Equals(r.IdempotencyKey, idempotencyKey, StringComparison.Ordinal));
+            AnalysisRun? run = idempotencyKey.Length == 0 ? null : FindByKey(ListOrEmpty(_runsByProject, tenantId, projectId), idempotencyKey);
+            return run is null ? Result<AnalysisRun>.NotFound("Run") : Result<AnalysisRun>.Success(run);
         }
     }
 
     /// <inheritdoc />
-    public AnalysisRun? FindRun(string tenantId, Guid projectId, Guid runId)
+    public Result<AnalysisRun> FindRun(string tenantId, Guid projectId, Guid runId)
     {
         lock (_gate)
         {
-            return _runs.GetValueOrDefault((tenantId, projectId))?.FirstOrDefault(r => r.Id == runId);
+            AnalysisRun? run = ListOrEmpty(_runsByProject, tenantId, projectId).FirstOrDefault(r => r.Id == runId);
+            return run is null ? Result<AnalysisRun>.NotFound("Run") : Result<AnalysisRun>.Success(run);
         }
     }
 
@@ -125,11 +128,19 @@ public sealed class InMemoryProjectRepository : IProjectRepository
     {
         lock (_gate)
         {
-            return _runs.GetValueOrDefault((tenantId, projectId))?.ToArray() ?? [];
+            return ListOrEmpty(_runsByProject, tenantId, projectId).ToArray();
         }
     }
 
-    private static List<T> ListFor<T>(Dictionary<(string Tenant, Guid Project), List<T>> store, string tenantId, Guid projectId)
+    private static AnalysisRun? FindByKey(IEnumerable<AnalysisRun> runs, string idempotencyKey) =>
+        runs.FirstOrDefault(r => string.Equals(r.IdempotencyKey, idempotencyKey, StringComparison.Ordinal));
+
+    /// <summary>Query: the stored list for a project, or an empty sequence; never creates an entry.</summary>
+    private static IEnumerable<T> ListOrEmpty<T>(Dictionary<(string Tenant, Guid Project), List<T>> store, string tenantId, Guid projectId) =>
+        store.TryGetValue((tenantId, projectId), out List<T>? list) ? list : [];
+
+    /// <summary>Command: returns the stored list for a project, creating it on first use. Caller must hold the lock.</summary>
+    private static List<T> GetOrCreateList<T>(Dictionary<(string Tenant, Guid Project), List<T>> store, string tenantId, Guid projectId)
     {
         if (!store.TryGetValue((tenantId, projectId), out List<T>? list))
         {

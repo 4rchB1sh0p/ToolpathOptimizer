@@ -8,7 +8,7 @@ namespace ToolpathOptimizer.Application.Outcomes;
 /// </summary>
 public static class ErrorCatalog
 {
-    private static readonly Dictionary<string, OutcomeCategory> s_explicit = new(StringComparer.Ordinal)
+    private static readonly Dictionary<string, OutcomeCategory> _categoryByCode = new(StringComparer.Ordinal)
     {
         [ErrorCodes.ConfigInvalid] = OutcomeCategory.Arguments,
         [ValidationCodes.ConstraintUnknownPoint] = OutcomeCategory.Input,
@@ -32,7 +32,7 @@ public static class ErrorCatalog
     public static OutcomeCategory CategoryOf(string code)
     {
         ArgumentNullException.ThrowIfNull(code);
-        if (s_explicit.TryGetValue(code, out OutcomeCategory category))
+        if (_categoryByCode.TryGetValue(code, out OutcomeCategory category))
         {
             return category;
         }

@@ -17,8 +17,8 @@ public static class ReportCsvSummaryWriter
     {
         using JsonDocument report = JsonDocument.Parse(reportJson);
         JsonElement root = report.RootElement;
-        bool candidate = root.GetProperty("selected_route").GetString() == "candidate";
-        JsonElement order = root.GetProperty(candidate ? "candidate_order" : "baseline_order");
+        bool isCandidateSelected = root.GetProperty("selected_route").GetString() == ContractNames.CandidateRoute;
+        JsonElement order = root.GetProperty(isCandidateSelected ? "candidate_order" : "baseline_order");
         Dictionary<string, JsonElement> points = root.GetProperty("canonical_job").GetProperty("points").EnumerateArray()
             .ToDictionary(p => p.GetProperty("point_id").GetString()!, StringComparer.Ordinal);
 

@@ -6,39 +6,6 @@ using ToolpathOptimizer.Core.Verification;
 namespace ToolpathOptimizer.Core.Analysis;
 
 /// <summary>
-/// Which route the analysis recommends.
-/// </summary>
-public enum RouteSelection
-{
-    /// <summary>The original input order.</summary>
-    Baseline,
-
-    /// <summary>The optimised, validated order.</summary>
-    Candidate,
-}
-
-/// <summary>
-/// A non-fatal analysis warning.
-/// </summary>
-public sealed class AnalysisWarning
-{
-    /// <summary>Creates a warning.</summary>
-    /// <param name="code">Stable code from <see cref="AnalysisCodes"/>.</param>
-    /// <param name="message">Explanation.</param>
-    public AnalysisWarning(string code, string message)
-    {
-        Code = code;
-        Message = message;
-    }
-
-    /// <summary>Gets the stable code.</summary>
-    public string Code { get; }
-
-    /// <summary>Gets the explanation.</summary>
-    public string Message { get; }
-}
-
-/// <summary>
 /// Immutable comparison of baseline and candidate routes with the selection decision.
 /// </summary>
 public sealed class AnalysisResult

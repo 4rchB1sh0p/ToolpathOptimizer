@@ -39,7 +39,7 @@ public sealed class AtomicFileReportWriter : IReportWriter
         }
         catch (OperationCanceledException)
         {
-            return OperationOutcome.Failure(ErrorCodes.Cancelled, "Writing the report was cancelled.");
+            return OperationOutcome.Failure(ErrorCodes.Cancelled, ErrorMessages.Cancelled);
         }
         catch (IOException) when (mode == ReportWriteMode.CreateNew && File.Exists(fullPath))
         {

@@ -2,6 +2,7 @@ using ToolpathOptimizer.Application.Outcomes;
 
 namespace ToolpathOptimizer.Application.UnitTests.Outcomes;
 
+/// <summary>Tests for <see cref="ErrorCatalog"/>.</summary>
 public sealed class ErrorCatalogTests
 {
     [Theory]
@@ -18,7 +19,7 @@ public sealed class ErrorCatalogTests
     [InlineData("IO_OUTPUT_EXISTS", OutcomeCategory.Io)]
     [InlineData("OPT_DEADLINE_EXCEEDED", OutcomeCategory.Budget)]
     [InlineData("SOMETHING_NEW", OutcomeCategory.Processing)]
-    public void CategoryOf_MapsStableCodes(string code, OutcomeCategory expected)
+    public void CategoryOf_StableCode_ReturnsDocumentedCategory(string code, OutcomeCategory expected)
     {
         Assert.Equal(expected, ErrorCatalog.CategoryOf(code));
     }

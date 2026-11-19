@@ -1,44 +1,28 @@
+using ToolpathOptimizer.Application.Ports;
+
 namespace ToolpathOptimizer.Cli.CommandLine;
 
 /// <summary>
-/// Supported commands.
-/// </summary>
-public enum CliCommand
-{
-    /// <summary>Print usage.</summary>
-    Help,
-
-    /// <summary>Print versions as JSON.</summary>
-    Version,
-
-    /// <summary>Validate inputs only.</summary>
-    Validate,
-
-    /// <summary>Validate, optimise, verify and write a report.</summary>
-    Analyze,
-}
-
-/// <summary>
-/// Parsed command line.
+/// A parsed, validated command line.
 /// </summary>
 public sealed class CliArguments
 {
     /// <summary>Creates parsed arguments.</summary>
-    /// <param name="command">Command.</param>
-    /// <param name="pointsPath">Points CSV path; empty when not applicable.</param>
-    /// <param name="jobPath">Manifest path; empty when not applicable.</param>
-    /// <param name="outputPath">Report path; empty when not applicable.</param>
-    /// <param name="overwrite">Whether an existing report may be replaced.</param>
-    public CliArguments(CliCommand command, string pointsPath, string jobPath, string outputPath, bool overwrite)
+    /// <param name="command">Command to run.</param>
+    /// <param name="pointsPath">Points CSV path; empty for commands without inputs.</param>
+    /// <param name="jobPath">Manifest path; empty for commands without inputs.</param>
+    /// <param name="outputPath">Report path; empty unless the command writes a report.</param>
+    /// <param name="writeMode">Whether an existing report may be replaced (<c>--overwrite</c>).</param>
+    public CliArguments(CliCommand command, string pointsPath, string jobPath, string outputPath, ReportWriteMode writeMode)
     {
         Command = command;
         PointsPath = pointsPath;
         JobPath = jobPath;
         OutputPath = outputPath;
-        Overwrite = overwrite;
+        WriteMode = writeMode;
     }
 
-    /// <summary>Gets the command.</summary>
+    /// <summary>Gets the command to run.</summary>
     public CliCommand Command { get; }
 
     /// <summary>Gets the points CSV path.</summary>
@@ -50,6 +34,6 @@ public sealed class CliArguments
     /// <summary>Gets the report path.</summary>
     public string OutputPath { get; }
 
-    /// <summary>Gets a value indicating whether an existing report may be replaced.</summary>
-    public bool Overwrite { get; }
+    /// <summary>Gets whether an existing report may be replaced.</summary>
+    public ReportWriteMode WriteMode { get; }
 }

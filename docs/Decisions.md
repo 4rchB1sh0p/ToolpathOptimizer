@@ -300,6 +300,38 @@ Date: 2026-11-19 | Status: Accepted
 - Accepted tradeoff: none.
 - Links: TD-008 (removed from section 7)
 
+### D-028 — `_` prefix for all private fields, enforced in build
+Date: 2026-11-19 | Status: Accepted
+- Decision: private static fields use `_camelCase` like instance fields; `.editorconfig` sets IDE1006 to `warning` and `EnforceCodeStyleInBuild` makes it a build error.
+- Why: the standard says private members use `_`; the .NET `s_` convention contradicted it and the rule was only a suggestion.
+- Rejected alternatives: keep `s_` and amend the standard; enforce only in the IDE.
+- Accepted tradeoff: deviates from the dotnet/runtime convention.
+- Links: [clean-coding-practices.md](../.github/clean-coding-practices.md)
+
+### D-029 — `Result<T>` for every expected failure, including "not found"
+Date: 2026-11-19 | Status: Accepted
+- Decision: repository lookups and `IArtifactStore.GetAsync` return `Result<T>` (`RESOURCE_NOT_FOUND`) instead of `null`; readers return `OperationOutcome`/`Result<T>` instead of `null`-as-success; the manifest reader no longer uses exceptions for control flow. `Result<T>.NotFound` and `FailAs<T>()` keep call sites short.
+- Why: one error-handling style; no `null` signals (clean-coding-practices.md design rules).
+- Rejected alternatives: `TryGet(out T)` (does not compose with async); an `Option<T>` type (a second, overlapping abstraction).
+- Accepted tradeoff: more allocations on lookups; immaterial at MVP scale.
+- Links: [application-and-infrastructure.md](design-docs/application-and-infrastructure.md)
+
+### D-030 — Split project commands; `AddRunIfAbsent` as a documented CQS exception
+Date: 2026-11-19 | Status: Accepted
+- Decision: `ProjectCommandService` (create/delete), `InputUploadService` and `AnalysisRunService` replace one eight-dependency service; `ProjectAuditor` and `ProjectArtifacts` own audit stamping and artifact keys. `AnalysisRun` is built via `Succeeded`/`Failed` factories from a `RunOrigin`. `IProjectRepository.AddRunIfAbsent` stays both command and query.
+- Why: single responsibility and smaller constructors; atomic idempotency needs check-and-add in one call.
+- Rejected alternatives: a mediator library; separate check-then-add (races).
+- Accepted tradeoff: more, smaller types.
+- Links: [web-and-tenancy.md](design-docs/web-and-tenancy.md)
+
+### D-031 — One public type per file; shared contract helpers
+Date: 2026-11-19 | Status: Accepted
+- Decision: every source file declares one public type. Contract strings live in `ContractNames`, JSON options and the `{code,message}` writer in `ContractJson`, BOM handling in `ByteOrderMark`. `HttpContextPrincipal` reads `ToolpathClaimTypes` (provider-neutral) and treats an unknown role as unauthenticated.
+- Why: navigation, and no duplicated mappings that could drift.
+- Rejected alternatives: grouping related types per file.
+- Accepted tradeoff: more files.
+- Links: [solution-structure.md](design-docs/solution-structure.md)
+
 ## Acceptance criteria
 - Every baseline row links to a D-entry, ADR or doc.
 - Entries are never deleted; superseded entries are marked.

@@ -11,23 +11,24 @@ namespace ToolpathOptimizer.Infrastructure.Files;
 /// </summary>
 public sealed partial class FileAliasDetector : IFileAliasDetector
 {
-    private static readonly StringComparison s_pathComparison =
+    private static readonly StringComparison _pathComparison =
         OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
 
     /// <inheritdoc />
     public bool AreSameFile(string firstPath, string secondPath)
     {
-        string first = Resolve(firstPath);
-        string second = Resolve(secondPath);
-        if (string.Equals(first, second, s_pathComparison))
+        string first = ResolveFinalPath(firstPath);
+        string second = ResolveFinalPath(secondPath);
+        if (string.Equals(first, second, _pathComparison))
         {
             return true;
         }
 
-        return OperatingSystem.IsWindows() && File.Exists(first) && File.Exists(second) && SameWindowsFileIdentity(first, second);
+        return OperatingSystem.IsWindows() && File.Exists(first) && File.Exists(second) && HasSameWindowsFileIdentity(first, second);
     }
 
-    private static string Resolve(string path)
+    /// <summary>Normalises a path and follows symbolic links to their final target.</summary>
+    private static string ResolveFinalPath(string path)
     {
         string full = Path.GetFullPath(path);
         try
@@ -41,7 +42,8 @@ public sealed partial class FileAliasDetector : IFileAliasDetector
         }
     }
 
-    private static bool SameWindowsFileIdentity(string first, string second)
+    /// <summary>Compares volume serial and file index; fails closed (returns <c>true</c>) when identity cannot be read.</summary>
+    private static bool HasSameWindowsFileIdentity(string first, string second)
     {
         try
         {
@@ -60,22 +62,37 @@ public sealed partial class FileAliasDetector : IFileAliasDetector
         }
     }
 
+    /// <summary>Retrieves file identity for an open handle.</summary>
+    /// <param name="file">Open file handle.</param>
+    /// <param name="information">Receives the file information.</param>
+    /// <returns><c>true</c> on success.</returns>
     [LibraryImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool GetFileInformationByHandle(SafeFileHandle file, out ByHandleFileInformation information);
 
+    /// <summary>Win32 <c>BY_HANDLE_FILE_INFORMATION</c>; only the volume serial and file index are used.</summary>
     [StructLayout(LayoutKind.Sequential)]
     private struct ByHandleFileInformation
     {
+        /// <summary>File attribute flags.</summary>
         public uint FileAttributes;
+        /// <summary>Creation time (FILETIME).</summary>
         public long CreationTime;
+        /// <summary>Last access time (FILETIME).</summary>
         public long LastAccessTime;
+        /// <summary>Last write time (FILETIME).</summary>
         public long LastWriteTime;
+        /// <summary>Serial number of the volume holding the file.</summary>
         public uint VolumeSerialNumber;
+        /// <summary>High 32 bits of the file size.</summary>
         public uint FileSizeHigh;
+        /// <summary>Low 32 bits of the file size.</summary>
         public uint FileSizeLow;
+        /// <summary>Number of hard links to the file.</summary>
         public uint NumberOfLinks;
+        /// <summary>High 32 bits of the volume-unique file index.</summary>
         public uint FileIndexHigh;
+        /// <summary>Low 32 bits of the volume-unique file index.</summary>
         public uint FileIndexLow;
     }
 }

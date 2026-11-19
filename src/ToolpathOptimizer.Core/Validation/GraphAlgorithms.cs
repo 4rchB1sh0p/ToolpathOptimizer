@@ -1,11 +1,14 @@
 namespace ToolpathOptimizer.Core.Validation;
 
 /// <summary>
-/// Deterministic graph helpers: Kahn acyclicity check and iterative Tarjan strongly connected components.
+/// Deterministic graph helpers over adjacency lists: Kahn acyclicity check and Tarjan strongly connected components.
 /// </summary>
 internal static class GraphAlgorithms
 {
-    /// <summary>Returns <c>true</c> when the directed graph has no cycle (Kahn's algorithm).</summary>
+    /// <summary>Determines whether a directed graph has no cycle (Kahn's algorithm).</summary>
+    /// <param name="nodeCount">Number of nodes.</param>
+    /// <param name="successors">Successor indices per node.</param>
+    /// <returns><c>true</c> when every node can be ordered topologically.</returns>
     public static bool IsAcyclic(int nodeCount, int[][] successors)
     {
         int[] indegree = new int[nodeCount];
@@ -18,109 +21,155 @@ internal static class GraphAlgorithms
         }
 
         var ready = new Queue<int>();
-        for (int v = 0; v < nodeCount; v++)
+        for (int i = 0; i < nodeCount; i++)
         {
-            if (indegree[v] == 0)
+            if (indegree[i] == 0)
             {
-                ready.Enqueue(v);
+                ready.Enqueue(i);
             }
         }
 
-        int processed = 0;
+        int processedCount = 0;
         while (ready.Count > 0)
         {
-            int v = ready.Dequeue();
-            processed++;
-            foreach (int w in successors[v])
+            int node = ready.Dequeue();
+            processedCount++;
+            foreach (int successor in successors[node])
             {
-                if (--indegree[w] == 0)
+                if (--indegree[successor] == 0)
                 {
-                    ready.Enqueue(w);
+                    ready.Enqueue(successor);
                 }
             }
         }
 
-        return processed == nodeCount;
+        return processedCount == nodeCount;
     }
 
-    /// <summary>Finds components that contain a cycle (size &gt; 1, or a self-loop). Iterative to avoid deep recursion.</summary>
-    public static List<int[]> FindCyclicComponents(int nodeCount, int[][] successors)
+    /// <summary>Finds the strongly connected components that contain a cycle (more than one node, or a self-loop).</summary>
+    /// <param name="nodeCount">Number of nodes.</param>
+    /// <param name="successors">Successor indices per node.</param>
+    /// <returns>The cyclic components, each as a list of node indices.</returns>
+    public static List<int[]> FindCyclicComponents(int nodeCount, int[][] successors) =>
+        new TarjanSearch(nodeCount, successors).FindCyclicComponents();
+
+    /// <summary>
+    /// Iterative Tarjan search (no recursion, so large graphs cannot overflow the stack). One instance per search.
+    /// </summary>
+    private sealed class TarjanSearch
     {
-        var components = new List<int[]>();
-        int[] index = new int[nodeCount];
-        int[] low = new int[nodeCount];
-        bool[] onStack = new bool[nodeCount];
-        Array.Fill(index, -1);
-        var sccStack = new Stack<int>();
-        int[] callNode = new int[nodeCount];
-        int[] callChild = new int[nodeCount];
-        int counter = 0;
+        private const int Unvisited = -1;
 
-        for (int root = 0; root < nodeCount; root++)
+        private readonly int[][] _successors;
+        private readonly int[] _visitIndex;
+        private readonly int[] _lowLink;
+        private readonly bool[] _isOnComponentStack;
+        private readonly Stack<int> _componentStack = new();
+        private readonly int[] _callStackNodes;
+        private readonly int[] _callStackChildCursor;
+        private readonly List<int[]> _cyclicComponents = [];
+        private int _callStackDepth;
+        private int _nextVisitIndex;
+
+        /// <summary>Creates a search over the given graph.</summary>
+        /// <param name="nodeCount">Number of nodes.</param>
+        /// <param name="successors">Successor indices per node.</param>
+        public TarjanSearch(int nodeCount, int[][] successors)
         {
-            if (index[root] != -1)
-            {
-                continue;
-            }
+            _successors = successors;
+            _visitIndex = new int[nodeCount];
+            _lowLink = new int[nodeCount];
+            _isOnComponentStack = new bool[nodeCount];
+            _callStackNodes = new int[nodeCount];
+            _callStackChildCursor = new int[nodeCount];
+            Array.Fill(_visitIndex, Unvisited);
+        }
 
-            int depth = 0;
-            Visit(root);
-            while (depth > 0)
+        /// <summary>Runs the search from every unvisited node.</summary>
+        /// <returns>The cyclic components.</returns>
+        public List<int[]> FindCyclicComponents()
+        {
+            for (int root = 0; root < _visitIndex.Length; root++)
             {
-                int u = callNode[depth - 1];
-                int[] succ = successors[u];
-                if (callChild[depth - 1] < succ.Length)
+                if (_visitIndex[root] != Unvisited)
                 {
-                    int w = succ[callChild[depth - 1]++];
-                    if (index[w] == -1)
-                    {
-                        Visit(w);
-                    }
-                    else if (onStack[w])
-                    {
-                        low[u] = Math.Min(low[u], index[w]);
-                    }
-
                     continue;
                 }
 
-                depth--;
-                if (depth > 0)
+                EnterNode(root);
+                while (_callStackDepth > 0)
                 {
-                    int parent = callNode[depth - 1];
-                    low[parent] = Math.Min(low[parent], low[u]);
-                }
-
-                if (low[u] == index[u])
-                {
-                    var members = new List<int>();
-                    int w;
-                    do
-                    {
-                        w = sccStack.Pop();
-                        onStack[w] = false;
-                        members.Add(w);
-                    }
-                    while (w != u);
-
-                    if (members.Count > 1 || Array.IndexOf(successors[u], u) >= 0)
-                    {
-                        components.Add(members.ToArray());
-                    }
+                    AdvanceSearch();
                 }
             }
 
-            void Visit(int v)
+            return _cyclicComponents;
+        }
+
+        private void EnterNode(int node)
+        {
+            _visitIndex[node] = _lowLink[node] = _nextVisitIndex++;
+            _componentStack.Push(node);
+            _isOnComponentStack[node] = true;
+            _callStackNodes[_callStackDepth] = node;
+            _callStackChildCursor[_callStackDepth] = 0;
+            _callStackDepth++;
+        }
+
+        private void AdvanceSearch()
+        {
+            int top = _callStackDepth - 1;
+            int node = _callStackNodes[top];
+            int[] children = _successors[node];
+            if (_callStackChildCursor[top] >= children.Length)
             {
-                index[v] = low[v] = counter++;
-                sccStack.Push(v);
-                onStack[v] = true;
-                callNode[depth] = v;
-                callChild[depth] = 0;
-                depth++;
+                LeaveNode(node);
+                return;
+            }
+
+            int child = children[_callStackChildCursor[top]++];
+            if (_visitIndex[child] == Unvisited)
+            {
+                EnterNode(child);
+            }
+            else if (_isOnComponentStack[child])
+            {
+                _lowLink[node] = Math.Min(_lowLink[node], _visitIndex[child]);
             }
         }
 
-        return components;
+        private void LeaveNode(int node)
+        {
+            _callStackDepth--;
+            if (_callStackDepth > 0)
+            {
+                int parent = _callStackNodes[_callStackDepth - 1];
+                _lowLink[parent] = Math.Min(_lowLink[parent], _lowLink[node]);
+            }
+
+            if (_lowLink[node] == _visitIndex[node])
+            {
+                CollectComponent(node);
+            }
+        }
+
+        private void CollectComponent(int rootNode)
+        {
+            var members = new List<int>();
+            int member;
+            do
+            {
+                member = _componentStack.Pop();
+                _isOnComponentStack[member] = false;
+                members.Add(member);
+            }
+            while (member != rootNode);
+
+            bool hasSelfLoop = Array.IndexOf(_successors[rootNode], rootNode) >= 0;
+            if (members.Count > 1 || hasSelfLoop)
+            {
+                _cyclicComponents.Add(members.ToArray());
+            }
+        }
     }
 }

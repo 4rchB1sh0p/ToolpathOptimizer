@@ -7,15 +7,31 @@ insert_final_newline = true
 indent_style = space
 indent_size = 4
 
-[*.{json,xml,csproj,props,yml,yaml}]
+[*.{json,xml,csproj,props,slnx,yml,yaml}]
 indent_size = 2
 
 [*.cs]
 csharp_style_namespace_declarations = file_scoped:warning
-dotnet_naming_rule.private_fields_underscore.symbols = private_fields
-dotnet_naming_rule.private_fields_underscore.style = underscore_camel
-dotnet_naming_rule.private_fields_underscore.severity = suggestion
+
+# Naming (clean-coding-practices.md, D-028). Enforced in build via EnforceCodeStyleInBuild + warnings-as-errors.
+dotnet_naming_rule.constants_are_pascal_case.symbols = constant_fields
+dotnet_naming_rule.constants_are_pascal_case.style = pascal_case
+dotnet_naming_rule.constants_are_pascal_case.severity = warning
+
+dotnet_naming_rule.private_fields_are_underscore_camel_case.symbols = private_fields
+dotnet_naming_rule.private_fields_are_underscore_camel_case.style = underscore_camel_case
+dotnet_naming_rule.private_fields_are_underscore_camel_case.severity = warning
+
+dotnet_naming_symbols.constant_fields.applicable_kinds = field
+dotnet_naming_symbols.constant_fields.applicable_accessibilities = *
+dotnet_naming_symbols.constant_fields.required_modifiers = const
+
 dotnet_naming_symbols.private_fields.applicable_kinds = field
 dotnet_naming_symbols.private_fields.applicable_accessibilities = private, protected
-dotnet_naming_style.underscore_camel.required_prefix = _
-dotnet_naming_style.underscore_camel.capitalization = camel_case
+
+dotnet_naming_style.pascal_case.capitalization = pascal_case
+
+dotnet_naming_style.underscore_camel_case.required_prefix = _
+dotnet_naming_style.underscore_camel_case.capitalization = camel_case
+dotnet_diagnostic.IDE1006.severity = warning
+dotnet_diagnostic.IDE0161.severity = warning

@@ -52,10 +52,10 @@ public static class AnalysisEngine
                 "The independent validator rejected the optimiser's candidate route.")]);
         }
 
-        return AnalysisOutcome.Success(Select(job, baseline, baselineCheck, optimised, candidateCheck, options.MinImprovement));
+        return AnalysisOutcome.Success(BuildResult(job, baseline, baselineCheck, optimised, candidateCheck, options.MinImprovement));
     }
 
-    private static AnalysisResult Select(
+    private static AnalysisResult BuildResult(
         DrillJob job,
         Route baseline,
         FeasibilityReport baselineCheck,
