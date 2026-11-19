@@ -1,0 +1,285 @@
+{
+  "schema_version": "1.0",
+  "report_kind": "advisory_drilling_sequence",
+  "advisory_notice": "Advisory analysis only. This report is not machine-ready NC code, models non-cutting travel distance only, makes no collision-safety, machine-safety or cycle-time claim, and must be reviewed by a qualified programmer before any sequence is re-entered in CAM.",
+  "job_id": "plate-demo",
+  "input_sha256": "958de00c6787511fb6c310d4f27b174d79cd23af3661bf1953c311c36e247fb9",
+  "source_files": [
+    {
+      "role": "points",
+      "sha256": "e63cd789c8c78d7d26842cd5ec44605949b1bf93579393a3eef5d15ca38d533f",
+      "size_bytes": 382
+    },
+    {
+      "role": "manifest",
+      "sha256": "6076dfb9b0002d596d64ba7fb90254ab80c55c2f86063bf03bd9389440471eda",
+      "size_bytes": 424
+    }
+  ],
+  "tool_name": "toolpath-optimize",
+  "tool_version": "0.1.0+aea289f1e2e3aa947ae68f8591717ae4a2c1a7b3",
+  "algorithm_name": "nearest-neighbor-2opt",
+  "algorithm_version": "1.0.0",
+  "parameters": {
+    "seed": 0,
+    "max_passes": 50,
+    "max_move_evaluations": 200000000,
+    "min_improvement_mm": 0.001
+  },
+  "length_unit": "mm",
+  "canonical_job": {
+    "points": [
+      {
+        "point_id": "P01",
+        "x_mm": 0,
+        "y_mm": 0,
+        "operation_group": ""
+      },
+      {
+        "point_id": "P02",
+        "x_mm": 200,
+        "y_mm": 90,
+        "operation_group": ""
+      },
+      {
+        "point_id": "P03",
+        "x_mm": 40,
+        "y_mm": 30,
+        "operation_group": ""
+      },
+      {
+        "point_id": "P04",
+        "x_mm": 160,
+        "y_mm": 0,
+        "operation_group": ""
+      },
+      {
+        "point_id": "P05",
+        "x_mm": 80,
+        "y_mm": 60,
+        "operation_group": "TAP"
+      },
+      {
+        "point_id": "P06",
+        "x_mm": 120,
+        "y_mm": 60,
+        "operation_group": "TAP"
+      },
+      {
+        "point_id": "P07",
+        "x_mm": 160,
+        "y_mm": 60,
+        "operation_group": "TAP"
+      },
+      {
+        "point_id": "P08",
+        "x_mm": 0,
+        "y_mm": 90,
+        "operation_group": ""
+      },
+      {
+        "point_id": "P09",
+        "x_mm": 200,
+        "y_mm": 0,
+        "operation_group": ""
+      },
+      {
+        "point_id": "P10",
+        "x_mm": 40,
+        "y_mm": 90,
+        "operation_group": ""
+      },
+      {
+        "point_id": "P11",
+        "x_mm": 120,
+        "y_mm": 0,
+        "operation_group": ""
+      },
+      {
+        "point_id": "P12",
+        "x_mm": 0,
+        "y_mm": 30,
+        "operation_group": ""
+      },
+      {
+        "point_id": "P13",
+        "x_mm": 200,
+        "y_mm": 60,
+        "operation_group": ""
+      },
+      {
+        "point_id": "P14",
+        "x_mm": 80,
+        "y_mm": 0,
+        "operation_group": ""
+      },
+      {
+        "point_id": "P15",
+        "x_mm": 160,
+        "y_mm": 30,
+        "operation_group": ""
+      },
+      {
+        "point_id": "P16",
+        "x_mm": 40,
+        "y_mm": 0,
+        "operation_group": ""
+      },
+      {
+        "point_id": "P17",
+        "x_mm": 120,
+        "y_mm": 90,
+        "operation_group": ""
+      },
+      {
+        "point_id": "P18",
+        "x_mm": 0,
+        "y_mm": 60,
+        "operation_group": ""
+      },
+      {
+        "point_id": "P19",
+        "x_mm": 200,
+        "y_mm": 30,
+        "operation_group": ""
+      },
+      {
+        "point_id": "P20",
+        "x_mm": 80,
+        "y_mm": 90,
+        "operation_group": ""
+      },
+      {
+        "point_id": "P21",
+        "x_mm": 40,
+        "y_mm": 60,
+        "operation_group": ""
+      },
+      {
+        "point_id": "P22",
+        "x_mm": 120,
+        "y_mm": 30,
+        "operation_group": ""
+      },
+      {
+        "point_id": "P23",
+        "x_mm": 160,
+        "y_mm": 90,
+        "operation_group": ""
+      },
+      {
+        "point_id": "P24",
+        "x_mm": 80,
+        "y_mm": 30,
+        "operation_group": ""
+      }
+    ],
+    "start_x_mm": -20,
+    "start_y_mm": -20,
+    "end_x_mm": -20,
+    "end_y_mm": -20,
+    "constraints": {
+      "precedence": [
+        {
+          "before": "P01",
+          "after": "P20"
+        },
+        {
+          "before": "P10",
+          "after": "P03"
+        }
+      ],
+      "locked_groups": [
+        "TAP"
+      ]
+    }
+  },
+  "baseline_order": [
+    "P01",
+    "P02",
+    "P03",
+    "P04",
+    "P05",
+    "P06",
+    "P07",
+    "P08",
+    "P09",
+    "P10",
+    "P11",
+    "P12",
+    "P13",
+    "P14",
+    "P15",
+    "P16",
+    "P17",
+    "P18",
+    "P19",
+    "P20",
+    "P21",
+    "P22",
+    "P23",
+    "P24"
+  ],
+  "candidate_order": [
+    "P01",
+    "P12",
+    "P18",
+    "P08",
+    "P10",
+    "P21",
+    "P03",
+    "P16",
+    "P14",
+    "P24",
+    "P05",
+    "P06",
+    "P07",
+    "P15",
+    "P04",
+    "P09",
+    "P19",
+    "P13",
+    "P02",
+    "P23",
+    "P17",
+    "P20",
+    "P22",
+    "P11"
+  ],
+  "selected_route": "candidate",
+  "selection_reason": "baseline_infeasible",
+  "baseline_distance_mm": 3077.3645851745882,
+  "candidate_distance_mm": 981.8166529940513,
+  "delta_distance_mm": -2095.547932180537,
+  "delta_percent": -68.09553675492272,
+  "constraint_check": {
+    "baseline": {
+      "feasible": false,
+      "violation_count": 1,
+      "violations": [
+        {
+          "code": "PRECEDENCE_VIOLATED",
+          "message": "Point 'P10' must be visited before 'P03'."
+        }
+      ]
+    },
+    "candidate": {
+      "feasible": true,
+      "violation_count": 0,
+      "violations": []
+    }
+  },
+  "search": {
+    "passes": 1,
+    "move_evaluations": 276,
+    "accepted_moves": 0,
+    "termination": "converged"
+  },
+  "warnings": [
+    {
+      "code": "BASELINE_VIOLATES_CONSTRAINTS",
+      "message": "The baseline order violates constraints; the validated candidate is selected."
+    }
+  ],
+  "generated_at_utc": "2026-11-19T15:32:02.869Z"
+}

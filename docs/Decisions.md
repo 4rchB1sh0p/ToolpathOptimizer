@@ -21,10 +21,10 @@ Status: Living document | Last reviewed: 2026-11-19
 ## 3. Technology baseline (proposed; verify versions at scaffold)
 | Area | Baseline | Source |
 |---|---|---|
-| Runtime | .NET 10 LTS, C# latest stable for that SDK | D-009 |
+| Runtime | .NET 10 LTS (SDK 10.0.404), C# 14 | D-009, D-019 |
 | Hosting | .NET Generic Host, DI, options validation on start, `TimeProvider`, `ILogger` | D-009, [ADR-0009](design-docs/adr/ADR-0009-generic-host-and-cross-cutting.md) |
 | Types | Sealed immutable classes; small value types as `readonly struct`; **no C# `record`** | D-014 |
-| JSON | `System.Text.Json` with source generation, snake_case, strict reading | D-010, [ADR-0010](design-docs/adr/ADR-0010-versioned-strict-json-contracts.md) |
+| JSON | `System.Text.Json` (`JsonDocument` strict reading, `Utf8JsonWriter` byte-stable writing), snake_case | D-010, D-021, [ADR-0010](design-docs/adr/ADR-0010-versioned-strict-json-contracts.md) |
 | Containers | Multi-stage images, non-root; deferred until web slice | D-013, [ADR-0013](design-docs/adr/ADR-0013-multi-stage-containers-deferred.md) |
 | Database | Not selected | Debt TD-005 |
 
@@ -64,9 +64,12 @@ Status: Living document | Last reviewed: 2026-11-19
 | TD-005 | Database provider and migration strategy not selected | Persistence design incomplete | Plan 0005 start | Open |
 | TD-006 | Locked groups cannot be relocated by 2-opt; no Or-opt | Lower improvement on grouped jobs | Pilot data shows benefit | Open |
 | TD-007 | Inch input, group-order (`AllowedTransitions`) and multi-tool constraints unsupported | Rejected inputs for some users | Validated demand | Open |
-| TD-008 | `.vscode/` contains configuration for an unrelated solution | Confusion; possible leakage of unrelated project names | Before first commit/publication | Open |
 | TD-009 | Proposed limits (points, file size, coordinates) not benchmarked | Limits may be too tight/loose | Plan 0002 benchmarks | Open |
 | TD-010 | [ARCHITECTURE.md](../.github/ARCHITECTURE.md) lists a single `ToolpathOptimizer.Tests`; superseded by AGENTS.md naming (D-005) | Doc inconsistency | Next ARCHITECTURE.md review | Open |
+| TD-012 | Output-is-input hard-link detection is Windows-only; Unix checks full path and symlinks only (D-025) | A Unix hard link could alias an input | Before Linux CLI distribution | Open |
+| TD-013 | JSON Schema files for manifest/report v1 not yet published | Integrators rely on prose contract | Plan 0003 closure | Open |
+| TD-014 | NuGet lock files and CI matrix (win/linux x64/arm64) not set up | Package drift; cross-platform determinism unproven | Before first release | Open |
+| TD-015 | Web uses in-memory repository and local-disk artifacts (data lost on restart) | Development only | TD-005 decision | Open |
 
 ## 8. Decision log
 
@@ -224,6 +227,78 @@ Date: 2026-11-19 | Status: Proposed
 - Rejected alternatives: tenant-only authorisation; provider-defined roles used directly.
 - Accepted tradeoff: role mapping per identity provider.
 - Links: [web-and-tenancy.md](design-docs/web-and-tenancy.md)
+
+### D-019 — Scaffold on .NET 10 with strict build settings
+Date: 2026-11-19 | Status: Accepted
+- Decision: all projects target `net10.0` (SDK 10.0.404, `global.json` rollForward latestFeature); `ToolpathOptimizer.slnx`; central package management; nullable, warnings-as-errors and XML docs enforced on `src/`.
+- Why: D-009 baseline; user requested .NET 10; zero-warning build is an acceptance criterion of solution-structure.md.
+- Rejected alternatives: net8.0 (only SDK installed at the time); classic `.sln`.
+- Accepted tradeoff: contributors need the .NET 10 SDK; lock files deferred (TD-014).
+- Links: [solution-structure.md](design-docs/solution-structure.md)
+
+### D-020 — Hand-rolled CLI argument parser
+Date: 2026-11-19 | Status: Accepted
+- Decision: a ~150-line parser for the fixed command set instead of a parser library.
+- Why: cli-design.md flags parser maturity/licence risk; four commands and five options need no library; stable `ARGS_*` codes are easy to guarantee.
+- Rejected alternatives: System.CommandLine; Spectre.Console.Cli.
+- Accepted tradeoff: no shell completion or generated help.
+- Links: [cli-design.md](design-docs/cli-design.md)
+
+### D-021 — Manual strict JSON reading and byte-stable writing
+Date: 2026-11-19 | Status: Accepted (refines D-010)
+- Decision: the manifest is read with `JsonDocument` (depth 16, no comments or trailing commas) and walked manually; reports and the canonical hash input are written with `Utf8JsonWriter` in fixed field order, LF newlines and relaxed escaping. No source-generated serializer.
+- Why: per-field error codes, duplicate-property detection and byte-identical output need explicit control; reports are never embedded in HTML.
+- Rejected alternatives: STJ source generation with `JsonUnmappedMemberHandling.Disallow` (coarse errors).
+- Accepted tradeoff: hand-maintained field lists; covered by field-order tests.
+- Links: [ADR-0010](design-docs/adr/ADR-0010-versioned-strict-json-contracts.md)
+
+### D-022 — Test tooling
+Date: 2026-11-19 | Status: Accepted
+- Decision: xUnit 2.9, NetArchTest.Rules for architecture rules, `Microsoft.Extensions.TimeProvider.Testing`, `Microsoft.AspNetCore.Mvc.Testing`, BenchmarkDotNet; property tests use seeded generators instead of a property-testing library.
+- Why: minimal dependencies; seeded cases are deterministic and reproducible.
+- Rejected alternatives: FsCheck/CsCheck (shrinking not needed yet); Stryker deferred.
+- Accepted tradeoff: no automatic shrinking of failing cases.
+- Links: [testing-strategy.md](design-docs/testing-strategy.md)
+
+### D-023 — Development-only identity and storage adapters
+Date: 2026-11-19 | Status: Accepted (until plan 0004 / TD-005)
+- Decision: Web authenticates via `X-Dev-Tenant`/`X-Dev-User`/`X-Dev-Role` headers and refuses to start outside Development; persistence is an in-memory repository plus a local-disk artifact store with tenant-prefixed, identifier-only keys.
+- Why: D-012 forbids building on unverified provider APIs; ports keep the swap local.
+- Rejected alternatives: cookie auth with a local user store; SQLite now.
+- Accepted tradeoff: not deployable; data lost on restart (TD-015).
+- Links: [web-and-tenancy.md](design-docs/web-and-tenancy.md), [ADR-0012](design-docs/adr/ADR-0012-shipanysaas-behind-ports.md)
+
+### D-024 — Explicit multipart reading without antiforgery
+Date: 2026-11-19 | Status: Accepted
+- Decision: the upload endpoint reads the form explicitly (no `IFormFile` binding) and maps size failures to 413 problem details; antiforgery is not applied.
+- Why: the API is header-authenticated, so there is no ambient cookie credential to forge.
+- Rejected alternatives: `IFormFile` binding with antiforgery tokens.
+- Accepted tradeoff: must revisit if a cookie-based identity adapter is chosen.
+- Links: [web-and-tenancy.md](design-docs/web-and-tenancy.md)
+
+### D-025 — Fail-closed output alias detection
+Date: 2026-11-19 | Status: Accepted
+- Decision: output paths are compared after full-path normalisation and symlink resolution; on Windows also by volume serial + file index (catches hard links); identity lookup failures count as aliases.
+- Why: inputs must never be replaced (D-017).
+- Rejected alternatives: path comparison only.
+- Accepted tradeoff: Unix hard links not detected yet (TD-012).
+- Links: [cli-design.md](design-docs/cli-design.md)
+
+### D-026 — Capped violation lists in reports
+Date: 2026-11-19 | Status: Accepted (additive to report v1)
+- Decision: `constraint_check.*.violations[]` lists at most 100 entries; additive `violation_count` gives the total.
+- Why: an infeasible baseline can violate thousands of edges; reports must stay bounded.
+- Rejected alternatives: unbounded lists.
+- Accepted tradeoff: full detail requires re-running the validator.
+- Links: [input-output-contracts.md](design-docs/input-output-contracts.md)
+
+### D-027 — Resolve TD-008
+Date: 2026-11-19 | Status: Accepted
+- Decision: `.vscode/` now builds/launches this solution only; the unrelated configuration was removed.
+- Why: TD-008 trigger (first code commit) reached.
+- Rejected alternatives: deleting `.vscode/`.
+- Accepted tradeoff: none.
+- Links: TD-008 (removed from section 7)
 
 ## Acceptance criteria
 - Every baseline row links to a D-entry, ADR or doc.

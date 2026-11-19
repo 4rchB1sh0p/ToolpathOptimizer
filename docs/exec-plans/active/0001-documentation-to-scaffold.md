@@ -18,8 +18,9 @@ Validate the drilling-order use case and approve the documentation baseline so t
 - [ ] Interview 5 CNC programmers; record anonymised workflow and constraints.
 - [ ] Review and approve input/output contracts and the advisory boundary.
 - [ ] Owners review Proposed ADRs (0002, 0007–0014) and set status.
-- [ ] Resolve TD-008 (unrelated `.vscode/` configuration) and TD-010 (ARCHITECTURE.md test project line).
-- [ ] Confirm .NET 10 LTS and tool choices for scaffold.
+- [x] Resolve TD-008 (unrelated `.vscode/` configuration) — D-027.
+- [ ] Resolve TD-010 (ARCHITECTURE.md test project line).
+- [x] Confirm .NET 10 LTS and tool choices for scaffold — D-019 to D-022; scaffold built.
 
 ## Acceptance criteria
 - Interview evidence recorded; go/no-go decision logged as a D-entry.

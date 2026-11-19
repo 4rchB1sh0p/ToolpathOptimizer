@@ -1,8 +1,6 @@
 {
   "files.associations": {
-    "**/configfiles/NewConfigFiles/**/*.json": "jsonc",
-    "**/appsettings*.json": "jsonc",
-    "**/lineConfiguration*.json": "jsonc"
+    "**/appsettings*.json": "jsonc"
   },
   "dotnet.defaultSolution": "ToolpathOptimizer.slnx"
 }

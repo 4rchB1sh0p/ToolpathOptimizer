@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>ToolpathOptimizer.Core</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="ToolpathOptimizer.Core.UnitTests" />
+    <InternalsVisibleTo Include="ToolpathOptimizer.Core.Benchmarks" />
+  </ItemGroup>
+</Project>
