@@ -1,0 +1,26 @@
+services:
+  web:
+    build:
+      context: ..
+      dockerfile: src/ToolpathOptimizer.Web/Dockerfile
+    environment:
+      # The current web host only supports Development identity; do not expose this service publicly.
+      ASPNETCORE_ENVIRONMENT: Development
+      ArtifactStorage__RootPath: /app/data/artifacts
+    ports:
+      - "127.0.0.1:${WEB_PORT:-8080}:8080"
+    read_only: true
+    tmpfs:
+      - /tmp
+    volumes:
+      - artifacts:/app/data
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 35s
+
+volumes:
+  artifacts:
